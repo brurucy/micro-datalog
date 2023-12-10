@@ -229,13 +229,9 @@ impl RelationStorage {
             .collect();
 
         let evaluation = evaluation_setup
-            // Change the following line to into_iter for it to not run in parallel.
             .into_par_iter()
             .map(|(delta_relation_symbol, rule)| {
-                let now = Instant::now();
                 let out = rule.step().collect::<Vec<_>>();
-                println!("Rule elapsed: {} milis", now.elapsed().as_millis());
-
                 (delta_relation_symbol, out)
             })
             .collect::<Vec<_>>();

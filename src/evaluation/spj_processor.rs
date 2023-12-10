@@ -385,8 +385,6 @@ impl<'a> RuleEvaluator<'a> {
                         })
                     });
 
-                    println!("Join time: {} milis", now.elapsed().as_millis());
-
                     out.borrow_all(&join_result_name, join_result.into_iter());
                 }
                 Instruction::Project(_symbol, projection_inputs) => {
