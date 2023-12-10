@@ -234,7 +234,7 @@ impl RelationStorage {
             .map(|(delta_relation_symbol, rule)| {
                 let now = Instant::now();
                 let out = rule.step().collect::<Vec<_>>();
-                //println!("Rule elapsed: {} milis", now.elapsed().as_millis());
+                println!("Rule elapsed: {} milis", now.elapsed().as_millis());
 
                 (delta_relation_symbol, out)
             })

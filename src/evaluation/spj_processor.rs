@@ -1,8 +1,10 @@
+use std::time::Instant;
 use crate::engine::ephemeral_storage::{EphemeralStorage, EphemeralValue};
 use crate::engine::storage::RelationStorage;
 use ahash::{HashMap, HashSet};
 use datalog_syntax::{AnonymousGroundAtom, Rule, Term, TypedValue, Variable};
 use crate::evaluation::spj_processor::Instruction::{Join, Project};
+use rayon::prelude::*;
 
 // This implements a minimal SPJ (Select, Project, Join) processor
 
@@ -256,7 +258,9 @@ impl<'a> RuleEvaluator<'a> {
 impl<'a> RuleEvaluator<'a> {
     pub fn step(&self) -> impl Iterator<Item = AnonymousGroundAtom> + 'a {
         let stack = Stack::from(self.rule.clone());
+
         let mut out = EphemeralStorage::default();
+
         // There will always be at least two elements in the stack. Move or Select and then Projection.
         let penultimate_operation = stack.inner.len() - 2;
         let mut relation_symbol_to_be_projected = self.rule.head.symbol.clone();
@@ -299,16 +303,54 @@ impl<'a> RuleEvaluator<'a> {
                     }
                 }
                 Instruction::Join(left_symbol, right_symbol, join_keys) => {
+                    let now = Instant::now();
                     let left_relation = out.get_relation(&left_symbol);
                     let right_relation = out.get_relation(&right_symbol);
                     let join_result_name = stringify_join(operation);
                     if idx == penultimate_operation {
                         relation_symbol_to_be_projected = join_result_name.clone();
                     }
-                    let mut join_result: Vec<_> = Default::default();
 
-                    left_relation.iter().for_each(|left_allocation| {
-                        right_relation.iter().for_each(|right_allocation| {
+                    let mut join_result = boxcar::vec![];
+
+                    left_relation.into_par_iter().for_each(|left_allocation| {
+                        let is_left_product = match left_allocation {
+                            EphemeralValue::FactRef(_) => false,
+                            EphemeralValue::JoinResult(_) => true
+                        };
+                        let mut join_key_positions = None;
+                        if is_left_product {
+                            join_key_positions = Some(join_keys
+                                .iter()
+                                .map(|(left_column, right_column)| {
+                                    let mut cumsum = 0;
+
+                                    let arities = {
+                                        match left_allocation {
+                                            EphemeralValue::JoinResult(product) => product,
+                                            _ => unreachable!()
+                                        }
+                                    }
+                                        .iter()
+                                        .map(|fact| fact.len());
+
+                                    let mut left_idx = 0;
+
+                                    for (idx, arity) in arities.enumerate() {
+                                        cumsum += arity;
+
+                                        if *left_column < cumsum {
+                                            left_idx = idx;
+                                            break;
+                                        }
+                                    }
+
+                                    ((left_idx, cumsum - left_column), right_column)
+                                })
+                            );
+                        }
+
+                        right_relation.into_iter().for_each(|right_allocation| {
                             let right_fact = match right_allocation {
                                 EphemeralValue::FactRef(fact) => fact,
                                 EphemeralValue::JoinResult(_) => unreachable!(),
@@ -330,31 +372,7 @@ impl<'a> RuleEvaluator<'a> {
                                     }
                                 }
                                 EphemeralValue::JoinResult(product) => {
-                                    //println!("{:?} - {} |><| {} - {:?}", product, left_column, right_column, right_fact);
-                                    let join_key_positions = join_keys
-                                        .iter()
-                                        .map(|(left_column, right_column)| {
-                                            let mut cumsum = 0;
-
-                                            let arities = product
-                                                .iter()
-                                                .map(|fact| fact.len());
-
-                                            let mut left_idx = 0;
-
-                                            for (idx, arity) in arities.enumerate() {
-                                                cumsum += arity;
-
-                                                if *left_column < cumsum {
-                                                    left_idx = idx;
-                                                    break;
-                                                }
-                                            }
-
-                                            ((left_idx, cumsum - left_column), right_column)
-                                        });
-
-                                    if join_key_positions.into_iter().all(|((left_fact_idx, left_column), right_column)| {
+                                    if join_key_positions.clone().unwrap().into_iter().all(|((left_fact_idx, left_column), right_column)| {
                                         product[left_fact_idx][left_column] == right_fact[*right_column]
                                     }) {
                                         let mut new_product = product.clone();
@@ -367,7 +385,9 @@ impl<'a> RuleEvaluator<'a> {
                         })
                     });
 
-                    out.inner.entry(join_result_name.clone()).or_insert(join_result);
+                    println!("Join time: {} milis", now.elapsed().as_millis());
+
+                    out.borrow_all(&join_result_name, join_result.into_iter());
                 }
                 Instruction::Project(_symbol, projection_inputs) => {
                     let ephemeral_relation_to_be_projected = out

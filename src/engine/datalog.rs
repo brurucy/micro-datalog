@@ -10,7 +10,7 @@ use datalog_syntax::*;
 use std::collections::HashSet;
 
 // Hairy
-pub struct ChibiRuntime {
+pub struct MicroRuntime {
     processed: RelationStorage,
     unprocessed_insertions: RelationStorage,
     unprocessed_deletions: RelationStorage,
@@ -23,7 +23,7 @@ pub struct ChibiRuntime {
     recursive_delta_rederivation_program: Program,
 }
 
-impl ChibiRuntime {
+impl MicroRuntime {
     pub fn insert(&mut self, relation: &str, ground_atom: AnonymousGroundAtom) -> bool {
         self.unprocessed_insertions.insert(relation, ground_atom)
     }
@@ -231,7 +231,7 @@ impl ChibiRuntime {
 
 #[cfg(test)]
 mod tests {
-    use crate::engine::datalog::ChibiRuntime;
+    use crate::engine::datalog::MicroRuntime;
     use datalog_rule_macro::program;
     use datalog_syntax::*;
     use std::collections::HashSet;
@@ -243,7 +243,7 @@ mod tests {
             tc(?x, ?z) <- [e(?x, ?y), tc(?y, ?z)],
         };
 
-        let mut runtime = ChibiRuntime::new(tc_program);
+        let mut runtime = MicroRuntime::new(tc_program);
         vec![
             vec!["a".into(), "b".into()],
             vec!["b".into(), "c".into()],
@@ -349,7 +349,7 @@ mod tests {
             tc(?x, ?z) <- [tc(?x, ?y), tc(?y, ?z)],
         };
 
-        let mut runtime = ChibiRuntime::new(tc_program);
+        let mut runtime = MicroRuntime::new(tc_program);
         vec![
             vec!["a".into(), "b".into()],
             // this extra atom will help with testing that rederivation works

@@ -1,13 +1,13 @@
 # Micro Datalog
 
-Micro Datalog is a minimal incremental datalog reasoner. It is primarily meant to be correct, easy to use, and sort-of
-fast. 
+Micro Datalog is a minimal incremental datalog reasoner. It is primarily meant to be correct, easy to use, and sort-of fast. It happens
+to be **very** fast.
 
 The following snippets showcase the engine in action
 ```rust
 #[cfg(test)]
 mod tests {
-   use crate::engine::datalog::ChibiRuntime;
+   use crate::engine::datalog::microRuntime;
    use datalog_rule_macro::program;
    use datalog_syntax::*;
    use std::collections::HashSet;
@@ -22,7 +22,7 @@ mod tests {
             tc(?x, ?z) <- [tc(?x, ?y), tc(?y, ?z)],
         };
 
-      let mut runtime = ChibiRuntime::new(tc_program);
+      let mut runtime = microRuntime::new(tc_program);
       vec![
          vec!["a".into(), "b".into()],
          // this extra fact (a, e) will help to test that rederivation works, since it has multiple valid ways of
@@ -116,14 +116,10 @@ mod tests {
 }
 ```
 
-In case you are interested in performance, there is a very simple benchmark under `./src/bin.rs`. It compares `ChibiDatalog`
+In case you are interested in performance, there is a very simple benchmark under `./src/bin.rs`. It compares `MicroDatalog`
 with [ascent](https://github.com/s-arash/ascent) and [crepe](https://github.com/ekzhang/crepe)
 
 To run it, clone the project, extract `./data/lubm1.nt.gz`, and then:
 ```shell
 cargo run --release
 ```
-
-### Next up
-
-1. Figure out why does it suck with large TC programs (uncomment the first test in `./src/bin.rs to see what I'm talking about)

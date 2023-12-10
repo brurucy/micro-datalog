@@ -1,5 +1,5 @@
 use ascent::ascent;
-use chibi_datalog::engine::datalog::ChibiRuntime;
+use micro_datalog::engine::datalog::MicroRuntime;
 use crepe::crepe;
 use datalog_rule_macro::program;
 use datalog_syntax::*;
@@ -33,7 +33,7 @@ fn main() {
         tc(?x, ?z) <- [e(?x, ?y), tc(?y, ?z)]
     };
 
-    let mut chibi_runtime = ChibiRuntime::new(program);
+    let mut micro_runtime = microRuntime::new(program);
     let mut ascnt_runtime = AscentProgram::default();
     let mut crepe_runtime = Crepe::new();
 
@@ -43,16 +43,16 @@ fn main() {
         let from: usize = triple[0].parse().unwrap();
         let to: usize = triple[1].parse().unwrap();
 
-        chibi_runtime.insert("e", vec![from.into(), to.into()]);
+        micro_runtime.insert("e", vec![from.into(), to.into()]);
         crepe_runtime.e.push(e(from, to));
         ascnt_runtime.e.push((from, to));
     });
 
     let now = Instant::now();
-    chibi_runtime.poll();
-    println!("chibi: {} milis", now.elapsed().as_millis());
+    micro_runtime.poll();
+    println!("micro: {} milis", now.elapsed().as_millis());
     let q = build_query!(tc(_, _));
-    let answer: Vec<_> = chibi_runtime.query(&q).unwrap().into_iter().collect();
+    let answer: Vec<_> = micro_runtime.query(&q).unwrap().into_iter().collect();
     println!("inferred tuples: {}", answer.len());
 
     let now = Instant::now();
@@ -128,7 +128,7 @@ fn main() {
     rodeo.get_or_intern(RANGE);
     rodeo.get_or_intern(PROPERTY);
 
-    let mut chibi_runtime = ChibiRuntime::new(program);
+    let mut micro_runtime = MicroRuntime::new(program);
     let mut ascnt_runtime = AscentProgram::default();
     let mut crepe_runtime = Crepe::new();
 
@@ -143,17 +143,17 @@ fn main() {
             let p = rodeo.get_or_intern_static(triple[1]).into_usize();
             let o = rodeo.get_or_intern_static(triple[2]).into_usize();
 
-            chibi_runtime.insert("RDF", vec![s.into(), p.into(), o.into()]);
+            micro_runtime.insert("RDF", vec![s.into(), p.into(), o.into()]);
             crepe_runtime.rdf.push(RDF(s, p, o));
             ascnt_runtime.RDF.push((s, p, o));
         }
     });
 
     let now = Instant::now();
-    chibi_runtime.poll();
-    println!("chibi: {} milis", now.elapsed().as_millis());
+    micro_runtime.poll();
+    println!("micro: {} milis", now.elapsed().as_millis());
     let q = build_query!(T(_, _, _));
-    let answer: Vec<_> = chibi_runtime.query(&q).unwrap().into_iter().collect();
+    let answer: Vec<_> = micro_runtime.query(&q).unwrap().into_iter().collect();
     println!("inferred tuples: {}", answer.len());
 
     let now = Instant::now();

@@ -1,4 +1,4 @@
-use ahash::{HashMap, HashSet};
+use ahash::{HashMap};
 use datalog_syntax::AnonymousGroundAtom;
 
 #[derive(Clone, Hash, Eq, PartialEq)]
@@ -12,7 +12,7 @@ pub struct EphemeralStorage<'a> {
     pub(crate) inner: HashMap<String, Vec<EphemeralValue<'a>>>,
 }
 
-impl<'a> EphemeralStorage<'a> {
+impl<'b, 'a> EphemeralStorage<'a> {
     pub fn get_relation(&self, relation_symbol: &str) -> &Vec<EphemeralValue<'a>> {
         return self.inner.get(relation_symbol).unwrap();
     }
@@ -24,11 +24,7 @@ impl<'a> EphemeralStorage<'a> {
         if let Some(ephemeral_relation) = self.inner.get_mut(relation_symbol) {
             ephemeral_relation.extend(facts.into_iter())
         } else {
-            let mut fresh_fact_storage: Vec<_> = Default::default();
-            fresh_fact_storage.extend(facts.into_iter());
-
-            self.inner
-                .insert(relation_symbol.to_string(), fresh_fact_storage);
+            self.inner.insert(relation_symbol.to_string(), Vec::from_iter(facts));
         }
     }
 }
