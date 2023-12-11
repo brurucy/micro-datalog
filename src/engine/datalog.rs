@@ -8,6 +8,7 @@ use crate::program_transformations::delta_program::make_delta_program;
 use crate::program_transformations::dred::{make_overdeletion_program, make_rederivation_program};
 use datalog_syntax::*;
 use std::collections::HashSet;
+use crate::program_transformations::dependency_graph::sort_program;
 
 // Hairy
 pub struct MicroRuntime {
@@ -83,6 +84,7 @@ impl MicroRuntime {
                 },
             );
 
+            let nonrecursive_delta_overdeletion_program = sort_program(&self.nonrecursive_delta_overdeletion_program);
             semi_naive_evaluation(
                 &mut self.processed,
                 &self.nonrecursive_delta_overdeletion_program,
@@ -210,6 +212,10 @@ impl MicroRuntime {
         let rederivation_program = make_delta_program(&make_rederivation_program(&program), false);
         let (nonrecursive_delta_rederivation_program, recursive_delta_rederivation_program) =
             split_program(rederivation_program);
+
+        let nonrecursive_delta_program = sort_program(&nonrecursive_delta_program);
+        let nonrecursive_delta_overdeletion_program = sort_program(&nonrecursive_delta_overdeletion_program);
+        let nonrecursive_delta_rederivation_program = sort_program(&nonrecursive_delta_rederivation_program);
 
         Self {
             processed,

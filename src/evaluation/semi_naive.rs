@@ -6,12 +6,12 @@ pub fn semi_naive_evaluation(
     nonrecursive_delta_program: &Program,
     recursive_delta_program: &Program,
 ) {
-    relation_storage.materialize_delta_program(&nonrecursive_delta_program);
+    relation_storage.materialize_nonrecursive_delta_program(&nonrecursive_delta_program);
 
     loop {
         let previous_non_delta_fact_count = relation_storage.len();
 
-        relation_storage.materialize_delta_program(&recursive_delta_program);
+        relation_storage.materialize_recursive_delta_program(&recursive_delta_program);
 
         let current_non_delta_fact_count = relation_storage.len();
 

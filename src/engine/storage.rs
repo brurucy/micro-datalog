@@ -221,15 +221,45 @@ impl RelationStorage {
         false
     }
 
-    pub fn materialize_delta_program(&mut self, program: &Program) {
-        let evaluation_setup: Vec<_> = program
+    // Nonrecursive materialisation can be done sequentially in one pass.
+    pub fn materialize_nonrecursive_delta_program(&mut self, nonrecursive_program: &Program) {
+        for (idx, rule) in nonrecursive_program.inner.iter().enumerate() {
+            let evaluator = RuleEvaluator::new(self, rule);
+
+            let evaluation = evaluator.step();
+
+            let delta_relation_symbol = rule.head.symbol.clone();
+
+            let current_delta_relation = self.get_relation(&delta_relation_symbol);
+
+            let diff: FactStorage = evaluation
+                .into_iter()
+                .filter(|fact| !current_delta_relation.contains(fact))
+                .collect();
+
+            if idx == 0 {
+                (*self.inner.get_mut(&delta_relation_symbol).unwrap()) = diff.clone();
+            } else {
+                self.insert_all(&delta_relation_symbol, diff.clone().into_iter());
+            }
+
+            let relation_symbol = delta_relation_symbol.clone();
+            relation_symbol.strip_prefix(DELTA_PREFIX).unwrap();
+            self.insert_all(
+                delta_relation_symbol.strip_prefix(DELTA_PREFIX).unwrap(),
+                diff.into_iter(),
+            );
+        }
+    }
+    pub fn materialize_recursive_delta_program(&mut self, recursive_program: &Program) {
+        let evaluation_setup: Vec<_> = recursive_program
             .inner
             .iter()
             .map(|rule| (&rule.head.symbol, RuleEvaluator::new(self, rule)))
             .collect();
 
         let evaluation = evaluation_setup
-            .into_par_iter()
+            .into_iter()
             .map(|(delta_relation_symbol, rule)| {
                 let out = rule.step().collect::<Vec<_>>();
                 (delta_relation_symbol, out)
@@ -260,6 +290,7 @@ impl RelationStorage {
             },
         );
     }
+
 
     pub fn len(&self) -> usize {
         return self
