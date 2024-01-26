@@ -51,6 +51,7 @@ mod test {
     use datalog_syntax::*;
     use pretty_assertions::assert_eq;
 
+    // make program! support not
     #[test]
     fn test_make_sne_program_nonlinear_update() {
         let program = program! {

@@ -63,7 +63,8 @@ pub type AnonymousGroundAtom = Vec<TypedValue>;
 #[derive(Ord, PartialOrd, Eq, PartialEq, Clone, Hash)]
 pub struct Atom {
     pub terms: Vec<Term>,
-    pub symbol: String,
+    pub symbol: String
+    // pub sign: bool
 }
 
 impl Debug for Atom {

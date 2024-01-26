@@ -98,7 +98,7 @@ impl Parse for AtomArgs {
     }
 }
 
-#[proc_macro]
+#[proc_macro] // procedural macro
 pub fn rule(input: TokenStream) -> TokenStream {
     let input = syn::parse_macro_input!(input as RuleMacroInput);
 
