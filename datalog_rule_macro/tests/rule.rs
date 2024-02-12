@@ -32,6 +32,7 @@ mod tests {
                     symbol: "tc".to_string(),
                 },
             ],
+            id: 0,
         };
 
         assert_eq!(rule_output, expected_output);
@@ -39,13 +40,13 @@ mod tests {
 
     #[test]
     fn test_more_complex_rule() {
-        let rule_output = rule! { tc(?x, 1.325829) <- [e(?x, "haha"), tc(?y, true)] };
+        let rule_output = rule! { tc(?x, 13) <- [e(?x, "haha"), tc(?y, true)] };
 
         let expected_output = Rule {
             head: Atom {
                 terms: vec![
                     Term::Variable("x".to_string()),
-                    Term::Constant(TypedValue::from(1.325829)),
+                    Term::Constant(TypedValue::from(13)),
                 ],
                 symbol: "tc".to_string(),
             },
@@ -65,6 +66,7 @@ mod tests {
                     symbol: "tc".to_string(),
                 },
             ],
+            id: 0,
         };
 
         assert_eq!(rule_output, expected_output);
