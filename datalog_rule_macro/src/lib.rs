@@ -128,13 +128,13 @@ pub fn rule(input: TokenStream) -> TokenStream {
                     TermArg::Constant(expr) => quote! { Term::Constant(TypedValue::from(#expr)) },
                 })
                 .collect();
-            quote! { Atom { terms: vec![#(#terms),*], symbol: stringify!(#name).to_string() } }
+            quote! { Atom { terms: vec![#(#terms),*], symbol: stringify!(#name).to_string(), sign: true } }
         })
         .collect();
 
     let expanded = quote! {
         Rule {
-            head: Atom { terms: vec![#(#head_terms),*], symbol: stringify!(#head_name).to_string() },
+            head: Atom { terms: vec![#(#head_terms),*], symbol: stringify!(#head_name).to_string(), sign: true },
             body: vec![#(#body_atoms),*],
             id: 0
         }
@@ -185,13 +185,13 @@ pub fn program(input: TokenStream) -> TokenStream {
                         TermArg::Constant(expr) => quote! { Term::Constant(TypedValue::from(#expr)) },
                     })
                     .collect();
-                quote! { Atom { terms: vec![#(#terms),*], symbol: stringify!(#name).to_string() } }
+                quote! { Atom { terms: vec![#(#terms),*], symbol: stringify!(#name).to_string(), sign: true } }
             })
             .collect();
 
         quote! {
             Rule {
-                head: Atom { terms: vec![#(#head_terms),*], symbol: stringify!(#head_name).to_string() },
+                head: Atom { terms: vec![#(#head_terms),*], symbol: stringify!(#head_name).to_string(), sign: true },
                 body: vec![#(#body_atoms),*],
                 id: 0
             }

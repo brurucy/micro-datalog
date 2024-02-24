@@ -64,6 +64,7 @@ pub type AnonymousGroundAtom = Vec<TypedValue>;
 pub struct Atom {
     pub terms: Vec<Term>,
     pub symbol: String,
+    pub sign: bool
 }
 
 impl Debug for Atom {
