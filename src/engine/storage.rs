@@ -1,4 +1,4 @@
-use std::time::Instant;
+
 use ahash::HashMap;
 use crate::helpers::helpers::{DELTA_PREFIX, OVERDELETION_PREFIX, REDERIVATION_PREFIX};
 use datalog_syntax::{AnonymousGroundAtom, Program};

@@ -303,7 +303,7 @@ impl<'a> RuleEvaluator<'a> {
                     }
                 }
                 Instruction::Join(left_symbol, right_symbol, join_keys) => {
-                    let now = Instant::now();
+                    let _now = Instant::now();
                     let left_relation = out.get_relation(&left_symbol);
                     let right_relation = out.get_relation(&right_symbol);
                     let join_result_name = stringify_join(operation);
@@ -311,7 +311,7 @@ impl<'a> RuleEvaluator<'a> {
                         relation_symbol_to_be_projected = join_result_name.clone();
                     }
 
-                    let mut join_result = boxcar::vec![];
+                    let join_result = boxcar::vec![];
 
                     left_relation.into_par_iter().for_each(|left_allocation| {
                         let is_left_product = match left_allocation {

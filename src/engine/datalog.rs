@@ -84,7 +84,7 @@ impl MicroRuntime {
                 },
             );
 
-            let nonrecursive_delta_overdeletion_program = sort_program(&self.nonrecursive_delta_overdeletion_program);
+            let _nonrecursive_delta_overdeletion_program = sort_program(&self.nonrecursive_delta_overdeletion_program);
             semi_naive_evaluation(
                 &mut self.processed,
                 &self.nonrecursive_delta_overdeletion_program,

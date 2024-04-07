@@ -1,7 +1,7 @@
 use ahash::HashSet;
 use datalog_syntax::{Program, Rule};
 use petgraph::graphmap::{DiGraphMap, GraphMap};
-use petgraph::visit::{EdgeIndexable, IntoNodeReferences};
+
 use petgraph::{algo, Directed};
 use std::collections::HashMap;
 
