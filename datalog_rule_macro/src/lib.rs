@@ -2,9 +2,9 @@ extern crate proc_macro;
 
 use proc_macro::TokenStream;
 use quote::quote;
-use std::collections::HashMap;
-use syn::parse::{Parse, ParseStream};
-use syn::{bracketed, parenthesized, Expr, Ident, Result, Token};
+use std::collections::{ HashSet, HashMap };
+use syn::parse::{ Parse, ParseStream };
+use syn::{ bracketed, parenthesized, Expr, Ident, Result, Token };
 
 enum TermArg {
     Variable(Ident),
@@ -14,6 +14,7 @@ enum TermArg {
 struct AtomArgs {
     name: Ident,
     args: Vec<TermArg>,
+    sign: bool,
 }
 
 struct RuleMacroInput {
@@ -21,48 +22,66 @@ struct RuleMacroInput {
     body: Vec<AtomArgs>,
 }
 
+impl Parse for TermArg {
+    fn parse(input: ParseStream) -> Result<Self> {
+        if input.peek(Token![?]) {
+            input.parse::<Token![?]>()?;
+            let ident: Ident = input.parse()?;
+            Ok(TermArg::Variable(ident))
+        } else {
+            let expr: Expr = input.parse()?;
+            Ok(TermArg::Constant(expr))
+        }
+    }
+}
+
 impl Parse for RuleMacroInput {
     fn parse(input: ParseStream) -> Result<Self> {
         let head = input.parse::<AtomArgs>()?;
-        let mut distinguished_variables: HashMap<String, (&Ident, bool)> = head
-            .args
+        let mut distinguished_variables: HashMap<String, (&Ident, bool)> = head.args
             .iter()
             .filter(|term| matches!(term, TermArg::Variable(_)))
-            .map(|variable| match variable {
-                TermArg::Variable(ident) => (ident.to_string(), (ident, false)),
-                _ => unreachable!(),
+            .map(|variable| {
+                match variable {
+                    TermArg::Variable(ident) => (ident.to_string(), (ident, false)),
+                    _ => unreachable!(),
+                }
             })
             .collect();
 
         input.parse::<Token![<-]>()?;
         let content2;
         bracketed!(content2 in input);
-        let body: syn::punctuated::Punctuated<AtomArgs, Token![,]> =
-            content2.parse_terminated(AtomArgs::parse)?;
+        let body: syn::punctuated::Punctuated<AtomArgs, Token![,]> = content2.parse_terminated(
+            AtomArgs::parse
+        )?;
         let body_vec: Vec<AtomArgs> = body.into_iter().collect();
         body_vec.iter().for_each(|body_atom| {
-            body_atom
-                .args
+            body_atom.args
                 .iter()
                 .filter(|term| matches!(term, TermArg::Variable(_)))
-                .for_each(|variable| match variable {
-                    TermArg::Variable(ident) => {
-                        let owned_ident = ident.to_string();
+                .for_each(|variable| {
+                    match variable {
+                        TermArg::Variable(ident) => {
+                            let owned_ident = ident.to_string();
 
-                        if distinguished_variables.contains_key(&owned_ident) {
-                            (distinguished_variables.get_mut(&owned_ident).unwrap()).1 = true;
+                            if distinguished_variables.contains_key(&owned_ident) {
+                                distinguished_variables.get_mut(&owned_ident).unwrap().1 = true;
+                            }
                         }
+                        _ => unreachable!(),
                     }
-                    _ => unreachable!(),
                 });
         });
 
         for (key, value) in distinguished_variables {
             if !value.1 {
-                return Err(syn::Error::new(
-                    value.0.span(),
-                    format!("variable {} not found in the body", key),
-                ));
+                return Err(
+                    syn::Error::new(
+                        value.0.span(),
+                        format!("variable {} not found in the body", key)
+                    )
+                );
             }
         }
 
@@ -75,26 +94,22 @@ impl Parse for RuleMacroInput {
 
 impl Parse for AtomArgs {
     fn parse(input: ParseStream) -> Result<Self> {
-        let name = input.parse()?;
+        let sign = if input.peek(Token![!]) {
+            input.parse::<Token![!]>()?;
+            false
+        } else {
+            true
+        };
+
+        let name: Ident = input.parse()?;
         let content;
         parenthesized!(content in input);
+        let args = content
+            .parse_terminated::<TermArg, Token![,]>(TermArg::parse)?
+            .into_iter()
+            .collect();
 
-        let args: syn::punctuated::Punctuated<TermArg, Token![,]> =
-            content.parse_terminated(|p| {
-                if p.peek(Token![?]) {
-                    p.parse::<Token![?]>()?;
-                    Ok(TermArg::Variable(p.parse()?))
-                } else {
-                    Ok(TermArg::Constant(p.parse()?))
-                }
-            })?;
-
-        let args_vec: Vec<TermArg> = args.into_iter().collect();
-
-        Ok(AtomArgs {
-            name,
-            args: args_vec,
-        })
+        Ok(AtomArgs { name, args, sign })
     }
 }
 
@@ -103,36 +118,40 @@ pub fn rule(input: TokenStream) -> TokenStream {
     let input = syn::parse_macro_input!(input as RuleMacroInput);
 
     let head_name = &input.head.name;
-    let head_terms: Vec<_> = input
-        .head
-        .args
+    let head_terms: Vec<_> = input.head.args
         .iter()
-        .map(|arg| match arg {
-            TermArg::Variable(ident) => quote! { Term::Variable(stringify!(#ident).to_string()) },
-            TermArg::Constant(expr) => quote! { Term::Constant(TypedValue::from(#expr)) },
+        .map(|arg| {
+            match arg {
+                TermArg::Variable(ident) =>
+                    quote! { Term::Variable(stringify!(#ident).to_string()) },
+                TermArg::Constant(expr) => quote! { Term::Constant(TypedValue::from(#expr)) },
+            }
         })
         .collect();
 
-    let body_atoms: Vec<_> = input
-        .body
+    let body_atoms: Vec<_> = input.body
         .iter()
         .map(|atom| {
             let name = &atom.name;
-            let terms: Vec<_> = atom
-                .args
+            let terms: Vec<_> = atom.args
                 .iter()
-                .map(|arg| match arg {
-                    TermArg::Variable(ident) => {
-                        quote! { Term::Variable(stringify!(#ident).to_string()) }
+                .map(|arg| {
+                    match arg {
+                        TermArg::Variable(ident) => {
+                            quote! { Term::Variable(stringify!(#ident).to_string()) }
+                        }
+                        TermArg::Constant(expr) =>
+                            quote! { Term::Constant(TypedValue::from(#expr)) },
                     }
-                    TermArg::Constant(expr) => quote! { Term::Constant(TypedValue::from(#expr)) },
                 })
                 .collect();
-            quote! { Atom { terms: vec![#(#terms),*], symbol: stringify!(#name).to_string(), sign: true } }
+            let sign = atom.sign;
+            quote! { Atom { terms: vec![#(#terms),*], symbol: stringify!(#name).to_string(), sign: #sign } }
         })
         .collect();
 
-    let expanded = quote! {
+    let expanded =
+        quote! {
         Rule {
             head: Atom { terms: vec![#(#head_terms),*], symbol: stringify!(#head_name).to_string(), sign: true },
             body: vec![#(#body_atoms),*],
@@ -158,45 +177,126 @@ impl Parse for ProgramMacroInput {
 pub fn program(input: TokenStream) -> TokenStream {
     let input = syn::parse_macro_input!(input as ProgramMacroInput);
 
-    let rules: Vec<_> = input.rules.into_iter().map(|rule_input| {
-        let head_name = &rule_input.head.name;
-        let head_terms: Vec<_> = rule_input
-            .head
-            .args
-            .iter()
-            .map(|arg| match arg {
-                TermArg::Variable(ident) => quote! { Term::Variable(stringify!(#ident).to_string()) },
-                TermArg::Constant(expr) => quote! { Term::Constant(TypedValue::from(#expr)) },
-            })
-            .collect();
+    let rules: Vec<_> = input.rules
+        .into_iter()
+        .map(|rule_input| {
+            let head_name = &rule_input.head.name;
+            let head_terms: Vec<_> = rule_input.head.args
+                .iter()
+                .map(|arg| {
+                    match arg {
+                        TermArg::Variable(ident) =>
+                            quote! { Term::Variable(stringify!(#ident).to_string()) },
+                        TermArg::Constant(expr) =>
+                            quote! { Term::Constant(TypedValue::from(#expr)) },
+                    }
+                })
+                .collect();
 
-        let body_atoms: Vec<_> = rule_input
-            .body
-            .iter()
-            .map(|atom| {
-                let name = &atom.name;
-                let terms: Vec<_> = atom
-                    .args
-                    .iter()
-                    .map(|arg| match arg {
-                        TermArg::Variable(ident) => {
-                            quote! { Term::Variable(stringify!(#ident).to_string()) }
-                        }
-                        TermArg::Constant(expr) => quote! { Term::Constant(TypedValue::from(#expr)) },
-                    })
-                    .collect();
-                quote! { Atom { terms: vec![#(#terms),*], symbol: stringify!(#name).to_string(), sign: true } }
-            })
-            .collect();
+            let body_atoms: Vec<_> = rule_input.body
+                .iter()
+                .map(|atom| {
+                    let name = &atom.name;
+                    let terms: Vec<_> = atom.args
+                        .iter()
+                        .map(|arg| {
+                            match arg {
+                                TermArg::Variable(ident) => {
+                                    quote! { Term::Variable(stringify!(#ident).to_string()) }
+                                }
+                                TermArg::Constant(expr) =>
+                                    quote! { Term::Constant(TypedValue::from(#expr)) },
+                            }
+                        })
+                        .collect();
+                    quote! { Atom { terms: vec![#(#terms),*], symbol: stringify!(#name).to_string(), sign: true } }
+                })
+                .collect();
 
-        quote! {
+            quote! {
             Rule {
                 head: Atom { terms: vec![#(#head_terms),*], symbol: stringify!(#head_name).to_string(), sign: true },
                 body: vec![#(#body_atoms),*],
                 id: 0
             }
         }
-    }).collect();
+        })
+        .collect();
+
+    let expanded = quote! {
+        Program::from( vec![#(#rules),*] )
+    };
+
+    expanded.into()
+}
+
+#[proc_macro]
+pub fn semipositive_program(input: TokenStream) -> TokenStream {
+    let input = syn::parse_macro_input!(input as ProgramMacroInput);
+
+    let mut heads = HashSet::new();
+    for rule in &input.rules {
+        heads.insert(&rule.head.name);
+    }
+
+    for rule in &input.rules {
+        for atom in &rule.body {
+            if !atom.sign && heads.contains(&atom.name) {
+                let message = format!(
+                    "Negated atom '{}' appears in the head of another rule!",
+                    atom.name
+                );
+                return syn::Error::new(atom.name.span(), message).to_compile_error().into();
+            }
+        }
+    }
+
+    let rules: Vec<_> = input.rules
+        .into_iter()
+        .map(|rule_input| {
+            let head_name = &rule_input.head.name;
+            let head_terms: Vec<_> = rule_input.head.args
+                .iter()
+                .map(|arg| {
+                    match arg {
+                        TermArg::Variable(ident) =>
+                            quote! { Term::Variable(stringify!(#ident).to_string()) },
+                        TermArg::Constant(expr) =>
+                            quote! { Term::Constant(TypedValue::from(#expr)) },
+                    }
+                })
+                .collect();
+
+            let body_atoms: Vec<_> = rule_input.body
+                .iter()
+                .map(|atom| {
+                    let name = &atom.name;
+                    let terms: Vec<_> = atom.args
+                        .iter()
+                        .map(|arg| {
+                            match arg {
+                                TermArg::Variable(ident) => {
+                                    quote! { Term::Variable(stringify!(#ident).to_string()) }
+                                }
+                                TermArg::Constant(expr) =>
+                                    quote! { Term::Constant(TypedValue::from(#expr)) },
+                            }
+                        })
+                        .collect();
+                    let sign = atom.sign;
+                    quote! { Atom { terms: vec![#(#terms),*], symbol: stringify!(#name).to_string(), sign: #sign } }
+                })
+                .collect();
+
+            quote! {
+            Rule {
+                head: Atom { terms: vec![#(#head_terms),*], symbol: stringify!(#head_name).to_string(), sign: true },
+                body: vec![#(#body_atoms),*],
+                id: 0
+            }
+        }
+        })
+        .collect();
 
     let expanded = quote! {
         Program::from( vec![#(#rules),*] )
