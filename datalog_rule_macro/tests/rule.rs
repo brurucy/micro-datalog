@@ -15,6 +15,7 @@ mod tests {
                     Term::Variable("z".to_string()),
                 ],
                 symbol: "tc".to_string(),
+                sign: true,
             },
             body: vec![
                 Atom {
@@ -23,6 +24,7 @@ mod tests {
                         Term::Variable("y".to_string()),
                     ],
                     symbol: "e".to_string(),
+                    sign: true,
                 },
                 Atom {
                     terms: vec![
@@ -30,6 +32,7 @@ mod tests {
                         Term::Variable("z".to_string()),
                     ],
                     symbol: "tc".to_string(),
+                    sign: true,
                 },
             ],
             id: 0,
@@ -49,6 +52,7 @@ mod tests {
                     Term::Constant(TypedValue::from(13)),
                 ],
                 symbol: "tc".to_string(),
+                sign: true,
             },
             body: vec![
                 Atom {
@@ -57,6 +61,7 @@ mod tests {
                         Term::Constant(TypedValue::from("haha")),
                     ],
                     symbol: "e".to_string(),
+                    sign: true,
                 },
                 Atom {
                     terms: vec![
@@ -64,6 +69,7 @@ mod tests {
                         Term::Constant(TypedValue::from(true)),
                     ],
                     symbol: "tc".to_string(),
+                    sign: true,
                 },
             ],
             id: 0,
