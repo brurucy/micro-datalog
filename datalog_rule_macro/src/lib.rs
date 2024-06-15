@@ -1,10 +1,13 @@
 extern crate proc_macro;
+extern crate common;
 
 use proc_macro::TokenStream;
 use quote::quote;
 use std::collections::{ HashSet, HashMap };
 use syn::parse::{ Parse, ParseStream };
 use syn::{ bracketed, parenthesized, Expr, Ident, Result, Token };
+use common::program_transformations::dependency_graph::{ generate_rule_dependency_graph, stratify };
+use datalog_syntax::{ Rule, Atom, Term, TypedValue };
 
 enum TermArg {
     Variable(Ident),
@@ -303,4 +306,87 @@ pub fn semipositive_program(input: TokenStream) -> TokenStream {
     };
 
     expanded.into()
+}
+
+fn string_to_ident_with_span(symbol: &str, span: syn::__private::Span) -> Ident {
+    Ident::new(symbol, span)
+}
+
+#[proc_macro]
+pub fn stratified_program(input: TokenStream) -> TokenStream {
+    let input_clone = input.clone();
+    let parsed_input = syn::parse_macro_input!(input as ProgramMacroInput);
+
+    let mut program_rules: Vec<_> = vec![];
+
+    for rule in parsed_input.rules {
+        // let head_name = &rule.head.name;
+        let head_terms: Vec<_> = rule.head.args
+            .iter()
+            .map(|arg| {
+                match arg {
+                    TermArg::Variable(_ident) => Term::Variable(stringify!(ident).to_string()),
+                    TermArg::Constant(_expr) =>
+                        Term::Constant(TypedValue::from(stringify!(expr).to_string())),
+                }
+            })
+            .collect();
+
+        let body_atoms: Vec<_> = rule.body
+            .iter()
+            .map(|atom| {
+                // let atom_name = &atom.name;
+                let atom_terms: Vec<_> = atom.args
+                    .iter()
+                    .map(|arg| {
+                        match arg {
+                            TermArg::Variable(_ident) =>
+                                Term::Variable(stringify!(ident).to_string()),
+                            TermArg::Constant(_expr) =>
+                                Term::Constant(TypedValue::from(stringify!(expr).to_string())),
+                        }
+                    })
+                    .collect();
+                Atom {
+                    terms: atom_terms,
+                    symbol: stringify!(atom_name).to_string(),
+                    sign: atom.sign,
+                }
+            })
+            .collect();
+
+        program_rules.push(Rule {
+            head: Atom {
+                terms: head_terms,
+                symbol: stringify!(head_name).to_string(),
+                sign: true,
+            },
+            body: body_atoms,
+            id: 0,
+        });
+    }
+
+    let rule_graph = generate_rule_dependency_graph(&program_rules);
+    let stratification = stratify(&rule_graph);
+
+    // Check for cycles with negation
+    for cycle in &stratification {
+        for rule in cycle {
+            for atom in &rule.body {
+                if !atom.sign && cycle.iter().any(|r| r.head.symbol == atom.symbol) {
+                    let message = format!("Negated dependencies form a cycle in SCC: {:?}", cycle);
+                    let ident_with_span = string_to_ident_with_span(
+                        &atom.symbol,
+                        syn::__private::Span::call_site()
+                    );
+                    return syn::Error
+                        ::new(ident_with_span.span(), message)
+                        .to_compile_error()
+                        .into();
+                }
+            }
+        }
+    }
+
+    semipositive_program(input_clone)
 }
