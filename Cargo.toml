@@ -1,3 +1,4 @@
+workspace = { members = ["common"] }
 [package]
 name = "micro-datalog"
 version = "0.1.0"
@@ -9,6 +10,7 @@ edition = "2021"
 ordered-float = "3.0.0"
 datalog-syntax = { path = "datalog-syntax" }
 datalog_rule_macro = { path = "datalog_rule_macro" }
+common = { path = "common" } 
 crepe = "0.1.8"
 ascent = "*"
 ahash="0.8.6"
