@@ -1,4 +1,3 @@
-use std::time::Instant;
 use ahash::HashMap;
 use crate::helpers::helpers::{DELTA_PREFIX, OVERDELETION_PREFIX, REDERIVATION_PREFIX};
 use datalog_syntax::{AnonymousGroundAtom, Program};
@@ -9,7 +8,7 @@ use rayon::prelude::*;
 pub type FactStorage = IndexSet<AnonymousGroundAtom, ahash::RandomState>;
 #[derive(Default)]
 pub struct RelationStorage {
-    pub(crate) inner: HashMap<String, FactStorage>,
+    pub inner: HashMap<String, FactStorage>,
 }
 
 impl RelationStorage {

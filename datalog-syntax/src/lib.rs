@@ -1,4 +1,4 @@
-use std::fmt::{Debug, Formatter};
+use std::fmt::{ Debug, Formatter };
 
 #[derive(Eq, Ord, PartialEq, PartialOrd, Clone, Hash)]
 pub enum TypedValue {
@@ -64,7 +64,7 @@ pub type AnonymousGroundAtom = Vec<TypedValue>;
 pub struct Atom {
     pub terms: Vec<Term>,
     pub symbol: String,
-    pub sign: bool // true for positive, false for negative
+    pub sign: bool, // true for positive, false for negative
 }
 
 impl Debug for Atom {
@@ -122,19 +122,25 @@ impl<'a> From<QueryBuilder<'a>> for Query<'a> {
 
 #[macro_export]
 macro_rules! build_query {
-    ($relation:ident ( $( $matcher:tt ),* $(,)? )) => {{
+    ($relation:ident($($matcher:tt),* $(,)?)) => {
+        {
         let mut builder = QueryBuilder::new(stringify!($relation));
         $(
             build_query!(@matcher builder, $matcher);
         )*
         builder.query
-    }};
-    (@matcher $builder:expr, _) => {{
+        }
+    };
+    (@matcher $builder:expr, _) => {
+        {
         $builder.with_any();
-    }};
-    (@matcher $builder:expr, $value:expr) => {{
+        }
+    };
+    (@matcher $builder:expr, $value:expr) => {
+        {
         $builder.with_constant($value.into());
-    }};
+        }
+    };
 }
 
 #[derive(Ord, PartialOrd, Eq, PartialEq, Clone, Hash)]
@@ -162,6 +168,20 @@ impl Debug for Rule {
 #[derive(Debug, Ord, PartialOrd, Eq, PartialEq, Clone, Hash)]
 pub struct Program {
     pub inner: Vec<Rule>,
+}
+
+impl Program {
+    pub fn get_negated_atoms(&self) -> Vec<&Atom> {
+        let mut negated_atoms = Vec::new();
+        for rule in &self.inner {
+            for atom in &rule.body {
+                if !atom.sign {
+                    negated_atoms.push(atom);
+                }
+            }
+        }
+        negated_atoms
+    }
 }
 
 impl From<Vec<Rule>> for Program {

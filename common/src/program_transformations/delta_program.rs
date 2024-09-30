@@ -1,10 +1,15 @@
-use crate::helpers::helpers::{add_prefix, DELTA_PREFIX};
-use datalog_syntax::{Program, Rule};
+// use micro_datalog::crate::helpers::helpers::{add_prefix, DELTA_PREFIX};
+use datalog_syntax::{ Program, Rule };
 use std::collections::HashSet;
 
+pub const DELTA_PREFIX: &str = "Δ";
+
+pub fn add_prefix(symbol: &mut String, prefix: &str) {
+    *symbol = format!("{}{}", prefix, symbol);
+}
+
 pub fn make_delta_program(program: &Program, update: bool) -> Program {
-    let idb_relation_symbols: HashSet<_> = program
-        .inner
+    let idb_relation_symbols: HashSet<_> = program.inner
         .iter()
         .map(|rule| rule.head.symbol.clone())
         .collect();
@@ -16,10 +21,7 @@ pub fn make_delta_program(program: &Program, update: bool) -> Program {
         let mut delta_rule = rule.clone();
         add_prefix(&mut delta_rule.head.symbol, DELTA_PREFIX);
 
-        let contains_idb = rule
-            .body
-            .iter()
-            .any(|atom| idb_relation_symbols.contains(&atom.symbol));
+        let contains_idb = rule.body.iter().any(|atom| idb_relation_symbols.contains(&atom.symbol));
 
         if !contains_idb && !update {
             // If the body does not contain any IDB relation symbols and it's not an update phase,
@@ -28,7 +30,10 @@ pub fn make_delta_program(program: &Program, update: bool) -> Program {
         } else {
             // Otherwise, consider each body atom and deltaify if necessary.
             for (index, body_atom) in rule.body.iter().enumerate() {
-                if update || idb_relation_symbols.contains(&body_atom.symbol) {
+                if body_atom.sign == false {
+                    // If the atom is negative, do not add the delta prefix.
+                    continue; // Skip modifying the negative atom's symbol.
+                } else if update || idb_relation_symbols.contains(&body_atom.symbol) {
                     let mut new_rule = delta_rule.clone();
                     add_prefix(&mut new_rule.body[index].symbol, DELTA_PREFIX);
                     delta_rules_set.insert(new_rule);
@@ -54,13 +59,15 @@ mod test {
     // make program! support not
     #[test]
     fn test_make_sne_program_nonlinear_update() {
-        let program = program! {
+        let program =
+            program! {
             tc(?x, ?y) <- [e(?x, ?y)],
             tc(?x, ?z) <- [tc(?x, ?y), tc(?y, ?z)]
         };
 
         let actual_program = make_delta_program(&program, true);
-        let expected_program = program! {
+        let expected_program =
+            program! {
             Δtc(?x, ?y) <- [Δe(?x, ?y)],
             Δtc(?x, ?z) <- [Δtc(?x, ?y), tc(?y, ?z)],
             Δtc(?x, ?z) <- [tc(?x, ?y), Δtc(?y, ?z)],
@@ -71,13 +78,15 @@ mod test {
 
     #[test]
     fn test_make_sne_program_nonlinear_initial() {
-        let program = program! {
+        let program =
+            program! {
             tc(?x, ?y) <- [e(?x, ?y)],
             tc(?x, ?z) <- [tc(?x, ?y), tc(?y, ?z)],
         };
 
         let actual_program = make_delta_program(&program, false);
-        let expected_program = program! {
+        let expected_program =
+            program! {
             Δtc(?x, ?y) <- [e(?x, ?y)],
             Δtc(? x, ?z) <- [Δtc(? x, ?y), tc(? y, ?z)],
             Δtc(? x, ?z) <-[tc(? x, ?y), Δtc(? y, ?z)],
@@ -88,13 +97,15 @@ mod test {
 
     #[test]
     fn test_make_sne_program_linear_initial() {
-        let program = program! {
+        let program =
+            program! {
             tc(?x, ?y) <- [e(?x, ?y)],
             tc(?x, ?z) <- [e(?x, ?y), tc(?y, ?z)],
         };
 
         let actual_program = make_delta_program(&program, false);
-        let expected_program = program! {
+        let expected_program =
+            program! {
             Δtc(?x, ?y) <- [e(?x, ?y)],
             Δtc(?x, ?z) <- [e(?x, ?y), Δtc(?y, ?z)],
         };
@@ -104,13 +115,15 @@ mod test {
 
     #[test]
     fn test_make_sne_program_linear_update() {
-        let program = program! {
+        let program =
+            program! {
             tc(?x, ?y) <- [e(?x, ?y)],
             tc(?x, ?z) <- [e(?x, ?y), tc(?y, ?z)],
         };
 
         let actual_program = make_delta_program(&program, true);
-        let expected_program = program! {
+        let expected_program =
+            program! {
             Δtc(?x, ?y) <- [Δe(?x, ?y)],
             Δtc(?x, ?z) <- [Δe(?x, ?y), tc(?y, ?z)],
             Δtc(?x, ?z) <- [e(?x, ?y), Δtc(?y, ?z)],
