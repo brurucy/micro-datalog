@@ -186,11 +186,11 @@ fn main() {
     micro_runtime.insert("e", vec![6.into(), 7.into()]);
     micro_runtime.insert("e", vec![7.into(), 8.into()]);
     micro_runtime.poll();
-    let q = build_query!(directly_reachable_from_0(_, _));
+    let q = build_query!(directly_reachable_from_0(_));
     let answer: Vec<_> = micro_runtime.query(&q).unwrap().into_iter().collect();
     println!("{:?}", answer);
     // The answer here should be: [ [1] ]
-    let q_not = build_query!(not_directly_reachable_from_0(_, _));
+    let q_not = build_query!(not_directly_reachable_from_0(_));
     let answer_not: Vec<_> = micro_runtime.query(&q_not).unwrap().into_iter().collect();
     println!("{:?}", answer_not);
     // The answer here should be: [ [2], [3], [4], [6], [7], [8] ]
