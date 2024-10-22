@@ -1,4 +1,4 @@
-use ahash::{HashMap};
+use ahash::HashMap;
 use datalog_syntax::AnonymousGroundAtom;
 
 #[derive(Clone, Hash, Eq, PartialEq)]
@@ -24,7 +24,8 @@ impl<'b, 'a> EphemeralStorage<'a> {
         if let Some(ephemeral_relation) = self.inner.get_mut(relation_symbol) {
             ephemeral_relation.extend(facts.into_iter())
         } else {
-            self.inner.insert(relation_symbol.to_string(), Vec::from_iter(facts));
+            self.inner
+                .insert(relation_symbol.to_string(), Vec::from_iter(facts));
         }
     }
 }
