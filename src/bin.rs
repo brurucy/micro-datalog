@@ -1,9 +1,9 @@
 use ascent::ascent;
-use micro_datalog::engine::datalog::MicroRuntime;
 use crepe::crepe;
-use datalog_rule_macro::program;
+use datalog_rule_macro::{program, semipositive_program};
 use datalog_syntax::*;
 use lasso::{Key, Rodeo};
+use micro_datalog::engine::datalog::MicroRuntime;
 use std::time::Instant;
 
 // TC benchmark
@@ -66,103 +66,132 @@ fn main() {
     println!("inferred tuples: {}", ascnt_runtime.tc.len());
 }
 */
-crepe! {
-    @input
-    struct RDF(usize, usize, usize);
+// crepe! {
+//     @input
+//     struct RDF(usize, usize, usize);
 
-    @output
-    struct T(usize, usize, usize);
+//     @output
+//     struct T(usize, usize, usize);
 
-    T(s, p, o) <- RDF(s, p, o);
-    T(y, 0, x) <- T(a, 3, x), T(y, a, z);
-    T(z, 0, x) <- T(a, 4, x), T(y, a, z);
-    T(x, 2, z) <- T(x, 2, y), T(y, 2, z);
-    T(x, 1, z) <- T(x, 1, y), T(y, 1, z);
-    T(z, 0, y) <- T(x, 1, y), T(z, 0, x);
-    T(x, b, y) <- T(a, 2, b), T(x, a, y);
-}
+//     T(s, p, o) <- RDF(s, p, o);
+//     T(y, 0, x) <- T(a, 3, x), T(y, a, z);
+//     T(z, 0, x) <- T(a, 4, x), T(y, a, z);
+//     T(x, 2, z) <- T(x, 2, y), T(y, 2, z);
+//     T(x, 1, z) <- T(x, 1, y), T(y, 1, z);
+//     T(z, 0, y) <- T(x, 1, y), T(z, 0, x);
+//     T(x, b, y) <- T(a, 2, b), T(x, a, y);
+// }
 
-ascent! {
-    relation RDF(usize, usize, usize);
-    relation T(usize, usize, usize);
+// ascent! {
+//     relation RDF(usize, usize, usize);
+//     relation T(usize, usize, usize);
 
-    T(s, p, o) <-- RDF(s, p, o);
-    T(y, 0, x) <-- T(a, 3, x), T(y, a, z);
-    T(z, 0, x) <-- T(a, 4, x), T(y, a, z);
-    T(x, 2, z) <-- T(x, 2, y), T(y, 2, z);
-    T(x, 1, z) <-- T(x, 1, y), T(y, 1, z);
-    T(z, 0, y) <-- T(x, 1, y), T(z, 0, x);
-    T(x, b, y) <-- T(a, 2, b), T(x, a, y);
-}
+//     T(s, p, o) <-- RDF(s, p, o);
+//     T(y, 0, x) <-- T(a, 3, x), T(y, a, z);
+//     T(z, 0, x) <-- T(a, 4, x), T(y, a, z);
+//     T(x, 2, z) <-- T(x, 2, y), T(y, 2, z);
+//     T(x, 1, z) <-- T(x, 1, y), T(y, 1, z);
+//     T(z, 0, y) <-- T(x, 1, y), T(z, 0, x);
+//     T(x, b, y) <-- T(a, 2, b), T(x, a, y);
+// }
 
-const TYPE: &'static str = "<http://www.w3.org/1999/02/22-rdf-syntax-ns#type>";
-const SUB_CLASS_OF: &'static str = "<http://www.w3.org/2000/01/rdf-schema#subClassOf>";
-const SUB_PROPERTY_OF: &'static str = "<http://www.w3.org/2000/01/rdf-schema#subPropertyOf>";
-const DOMAIN: &'static str = "<http://www.w3.org/2000/01/rdf-schema#domain>";
-const RANGE: &'static str = "<http://www.w3.org/2000/01/rdf-schema#range>";
-const PROPERTY: &'static str = "<http://www.w3.org/1999/02/22-rdf-syntax-ns#Property>";
-const PREFIX: &'static str = "http://www.lehigh.edu/~zhp2/2004/0401/univ-bench.owl#";
+// const TYPE: &'static str = "<http://www.w3.org/1999/02/22-rdf-syntax-ns#type>";
+// const SUB_CLASS_OF: &'static str = "<http://www.w3.org/2000/01/rdf-schema#subClassOf>";
+// const SUB_PROPERTY_OF: &'static str = "<http://www.w3.org/2000/01/rdf-schema#subPropertyOf>";
+// const DOMAIN: &'static str = "<http://www.w3.org/2000/01/rdf-schema#domain>";
+// const RANGE: &'static str = "<http://www.w3.org/2000/01/rdf-schema#range>";
+// const PROPERTY: &'static str = "<http://www.w3.org/1999/02/22-rdf-syntax-ns#Property>";
+// const PREFIX: &'static str = "http://www.lehigh.edu/~zhp2/2004/0401/univ-bench.owl#";
 
-fn parse_triple(line: &str) -> (&str, &str, &str) {
-    let triple: Vec<_> = line.split(">").collect();
+// fn parse_triple(line: &str) -> (&str, &str, &str) {
+//     let triple: Vec<_> = line.split(">").collect();
 
-    return (triple[0], triple[1], triple[2]);
-}
+//     return (triple[0], triple[1], triple[2]);
+// }
 
+// fn main() {
+//     let program = program! {
+//         T(?s, ?p, ?o) <- [RDF(?s, ?p, ?o)],
+//         T(?y, 0, ?x) <- [T(?a, 3, ?x), T(?y, ?a, ?z)],
+//         T(?z, 0, ?x) <- [T(?a, 4, ?x), T(?y, ?a, ?z)],
+//         T(?x, 2, ?z) <- [T(?x, 2, ?y), T(?y, 2, ?z)],
+//         T(?x, 1, ?z) <- [T(?x, 1, ?y), T(?y, 1, ?z)],
+//         T(?z, 0, ?y) <- [T(?x, 1, ?y), T(?z, 0, ?x)],
+//         T(?x, ?b, ?y) <- [T(?a, 2, ?b), T(?x, ?a, ?y)]
+//     };
+
+//     let mut rodeo = Rodeo::default();
+//     rodeo.get_or_intern(TYPE).into_usize();
+//     rodeo.get_or_intern(SUB_CLASS_OF);
+//     rodeo.get_or_intern(SUB_PROPERTY_OF);
+//     rodeo.get_or_intern(DOMAIN);
+//     rodeo.get_or_intern(RANGE);
+//     rodeo.get_or_intern(PROPERTY);
+
+//     let mut micro_runtime = MicroRuntime::new(program);
+//     let mut ascnt_runtime = AscentProgram::default();
+//     let mut crepe_runtime = Crepe::new();
+
+//     let data = include_str!("../data/lubm1.nt");
+//     data.lines().into_iter().for_each(|line| {
+//         if !line.contains("genid") {
+//             let triple: Vec<_> = line
+//                 .split_whitespace()
+//                 .map(|resource| resource.trim())
+//                 .collect();
+//             let s = rodeo.get_or_intern_static(triple[0]).into_usize();
+//             let p = rodeo.get_or_intern_static(triple[1]).into_usize();
+//             let o = rodeo.get_or_intern_static(triple[2]).into_usize();
+
+//             micro_runtime.insert("RDF", vec![s.into(), p.into(), o.into()]);
+//             crepe_runtime.rdf.push(RDF(s, p, o));
+//             ascnt_runtime.RDF.push((s, p, o));
+//         }
+//     });
+
+//     let now = Instant::now();
+//     micro_runtime.poll();
+//     println!("micro: {} milis", now.elapsed().as_millis());
+//     let q = build_query!(T(_, _, _));
+//     let answer: Vec<_> = micro_runtime.query(&q).unwrap().into_iter().collect();
+//     println!("inferred tuples: {}", answer.len());
+
+//     let now = Instant::now();
+//     let crepe_out = crepe_runtime.run();
+//     println!("crepe: {} milis", now.elapsed().as_millis());
+//     println!("inferred tuples: {}", crepe_out.0.len());
+
+//     let now = Instant::now();
+//     ascnt_runtime.run();
+//     println!("ascent: {} milis", now.elapsed().as_millis());
+//     println!("inferred tuples: {}", ascnt_runtime.T.len());
+// }
+
+// Testing semipositive
 fn main() {
-    let program = program! {
-        T(?s, ?p, ?o) <- [RDF(?s, ?p, ?o)],
-        T(?y, 0, ?x) <- [T(?a, 3, ?x), T(?y, ?a, ?z)],
-        T(?z, 0, ?x) <- [T(?a, 4, ?x), T(?y, ?a, ?z)],
-        T(?x, 2, ?z) <- [T(?x, 2, ?y), T(?y, 2, ?z)],
-        T(?x, 1, ?z) <- [T(?x, 1, ?y), T(?y, 1, ?z)],
-        T(?z, 0, ?y) <- [T(?x, 1, ?y), T(?z, 0, ?x)],
-        T(?x, ?b, ?y) <- [T(?a, 2, ?b), T(?x, ?a, ?y)]
+    let semipositive_program = semipositive_program! {
+        tc(?x, ?y) <- [e(?x, ?y)],
+        tc(?x, ?z) <- [e(?x, ?y), tc(?y, ?z)],
+        directly_reachable_from_0(?y) <- [e(0, ?y)],
+        not_directly_reachable_from_0(?y) <- [!e(0, ?y)]
     };
 
-    let mut rodeo = Rodeo::default();
-    rodeo.get_or_intern(TYPE).into_usize();
-    rodeo.get_or_intern(SUB_CLASS_OF);
-    rodeo.get_or_intern(SUB_PROPERTY_OF);
-    rodeo.get_or_intern(DOMAIN);
-    rodeo.get_or_intern(RANGE);
-    rodeo.get_or_intern(PROPERTY);
-
-    let mut micro_runtime = MicroRuntime::new(program);
-    let mut ascnt_runtime = AscentProgram::default();
-    let mut crepe_runtime = Crepe::new();
-
-    let data = include_str!("../data/lubm1.nt");
-    data.lines().into_iter().for_each(|line| {
-        if !line.contains("genid") {
-            let triple: Vec<_> = line
-                .split_whitespace()
-                .map(|resource| resource.trim())
-                .collect();
-            let s = rodeo.get_or_intern_static(triple[0]).into_usize();
-            let p = rodeo.get_or_intern_static(triple[1]).into_usize();
-            let o = rodeo.get_or_intern_static(triple[2]).into_usize();
-
-            micro_runtime.insert("RDF", vec![s.into(), p.into(), o.into()]);
-            crepe_runtime.rdf.push(RDF(s, p, o));
-            ascnt_runtime.RDF.push((s, p, o));
-        }
-    });
-
-    let now = Instant::now();
+    println!("{:?}", semipositive_program.inner[3]);
+    let mut micro_runtime = MicroRuntime::new(semipositive_program);
+    micro_runtime.insert("e", vec![0.into(), 1.into()]);
+    micro_runtime.insert("e", vec![1.into(), 2.into()]);
+    micro_runtime.insert("e", vec![2.into(), 3.into()]);
+    micro_runtime.insert("e", vec![2.into(), 4.into()]);
+    micro_runtime.insert("e", vec![5.into(), 6.into()]);
+    micro_runtime.insert("e", vec![6.into(), 7.into()]);
+    micro_runtime.insert("e", vec![7.into(), 8.into()]);
     micro_runtime.poll();
-    println!("micro: {} milis", now.elapsed().as_millis());
-    let q = build_query!(T(_, _, _));
+    let q = build_query!(directly_reachable_from_0(_, _));
     let answer: Vec<_> = micro_runtime.query(&q).unwrap().into_iter().collect();
-    println!("inferred tuples: {}", answer.len());
-
-    let now = Instant::now();
-    let crepe_out = crepe_runtime.run();
-    println!("crepe: {} milis", now.elapsed().as_millis());
-    println!("inferred tuples: {}", crepe_out.0.len());
-
-    let now = Instant::now();
-    ascnt_runtime.run();
-    println!("ascent: {} milis", now.elapsed().as_millis());
-    println!("inferred tuples: {}", ascnt_runtime.T.len());
+    println!("{:?}", answer);
+    // The answer here should be: [ [1] ]
+    let q_not = build_query!(not_directly_reachable_from_0(_, _));
+    let answer_not: Vec<_> = micro_runtime.query(&q_not).unwrap().into_iter().collect();
+    println!("{:?}", answer_not);
+    // The answer here should be: [ [2], [3], [4], [6], [7], [8] ]
 }
