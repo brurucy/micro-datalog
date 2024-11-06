@@ -75,65 +75,68 @@ impl MicroRuntime {
     }
 
     pub fn poll(&mut self) {
-        if !self.unprocessed_deletions.is_empty() {
-            self.unprocessed_deletions
-                .drain_all_relations()
-                .for_each(|(relation_symbol, unprocessed_facts)| {
-                    let mut overdeletion_symbol = relation_symbol.clone();
-                    add_prefix(&mut overdeletion_symbol, OVERDELETION_PREFIX);
+        let sorted_program = sort_program(&self.program);
+        for stratum_rules in sorted_program.inner.iter() {
+            if !self.unprocessed_deletions.is_empty() {
+                self.unprocessed_deletions
+                    .drain_all_relations()
+                    .for_each(|(relation_symbol, unprocessed_facts)| {
+                        let mut overdeletion_symbol = relation_symbol.clone();
+                        add_prefix(&mut overdeletion_symbol, OVERDELETION_PREFIX);
 
-                    self.processed.insert_all(
-                        &overdeletion_symbol,
-                        unprocessed_facts.into_iter().map(|fact| fact)
-                    );
-                });
+                        self.processed.insert_all(
+                            &overdeletion_symbol,
+                            unprocessed_facts.into_iter().map(|fact| fact)
+                        );
+                    });
 
-            let nonrecursive_delta_overdeletion_program = sort_program(
-                &self.nonrecursive_delta_overdeletion_program
-            );
-            semi_naive_evaluation(
-                &mut self.processed,
-                &self.nonrecursive_delta_overdeletion_program,
-                &self.recursive_delta_overdeletion_program
-            );
-            self.processed.drain_deltas();
-            self.processed.overdelete();
+                let nonrecursive_delta_overdeletion_program = sort_program(
+                    &self.nonrecursive_delta_overdeletion_program
+                );
+                semi_naive_evaluation(
+                    &mut self.processed,
+                    &self.nonrecursive_delta_overdeletion_program,
+                    &self.recursive_delta_overdeletion_program
+                );
+                self.processed.drain_deltas();
+                self.processed.overdelete();
 
-            semi_naive_evaluation(
-                &mut self.processed,
-                &self.nonrecursive_delta_rederivation_program,
-                &self.recursive_delta_rederivation_program
-            );
-            self.processed.drain_deltas();
-            self.processed.rederive();
+                semi_naive_evaluation(
+                    &mut self.processed,
+                    &self.nonrecursive_delta_rederivation_program,
+                    &self.recursive_delta_rederivation_program
+                );
+                self.processed.drain_deltas();
+                self.processed.rederive();
 
-            self.processed.clear_prefix(OVERDELETION_PREFIX);
-            self.processed.clear_prefix(REDERIVATION_PREFIX);
-        }
-        if !self.unprocessed_insertions.is_empty() {
-            // Additions
-            self.unprocessed_insertions
-                .drain_all_relations()
-                .for_each(|(relation_symbol, unprocessed_facts)| {
-                    // We dump all unprocessed EDB relations into delta EDB relations
-                    self.processed.insert_registered(
-                        &format!("{}{}", DELTA_PREFIX, relation_symbol),
-                        unprocessed_facts.clone().into_iter()
-                    );
-                    // And in their respective place
-                    self.processed.insert_registered(
-                        &relation_symbol,
-                        unprocessed_facts.into_iter()
-                    );
-                });
+                self.processed.clear_prefix(OVERDELETION_PREFIX);
+                self.processed.clear_prefix(REDERIVATION_PREFIX);
+            }
+            if !self.unprocessed_insertions.is_empty() {
+                // Additions
+                self.unprocessed_insertions
+                    .drain_all_relations()
+                    .for_each(|(relation_symbol, unprocessed_facts)| {
+                        // We dump all unprocessed EDB relations into delta EDB relations
+                        self.processed.insert_registered(
+                            &format!("{}{}", DELTA_PREFIX, relation_symbol),
+                            unprocessed_facts.clone().into_iter()
+                        );
+                        // And in their respective place
+                        self.processed.insert_registered(
+                            &relation_symbol,
+                            unprocessed_facts.into_iter()
+                        );
+                    });
 
-            semi_naive_evaluation(
-                &mut self.processed,
-                &self.nonrecursive_delta_program,
-                &self.recursive_delta_program
-            );
+                semi_naive_evaluation(
+                    &mut self.processed,
+                    &self.nonrecursive_delta_program,
+                    &self.recursive_delta_program
+                );
 
-            self.processed.drain_deltas()
+                self.processed.drain_deltas();
+            }
         }
     }
 
@@ -445,5 +448,94 @@ mod tests {
             .into_iter()
             .collect();
         assert_eq!(expected_all_from_a_after_update, actual_all_from_a_after_update);
+    }
+
+    #[test]
+    fn integration_test_stratified_evaluation() {
+        let stratified_program =
+            program! {
+        // Stratum 1: Base rule
+        base(?x, ?y) <- [edge(?x, ?y)],
+        
+        // Stratum 2: Derived rule depends on Stratum 1
+        derived(?x, ?y) <- [base(?x, ?y)],
+        derived(?x, ?z) <- [base(?x, ?y), derived(?y, ?z)],
+
+        // Stratum 3: Another level of derivation
+        top(?x, ?z) <- [derived(?x, ?y), base(?y, ?z)],
+    };
+
+        let mut runtime = MicroRuntime::new(stratified_program);
+
+        // Insert facts into the base layer (Stratum 1)
+        vec![vec!["a".into(), "b".into()], vec!["b".into(), "c".into()]]
+            .into_iter()
+            .for_each(|edge| {
+                runtime.insert("edge", edge);
+            });
+
+        runtime.poll();
+
+        // Query and assert expectations for each stratum
+        // Expected results for Stratum 1: `base`
+        let base_query = build_query!(base(_, _));
+        let actual_base: HashSet<AnonymousGroundAtom> = runtime
+            .query(&base_query)
+            .unwrap()
+            .collect();
+        let expected_base: HashSet<AnonymousGroundAtom> = vec![
+            vec!["a".into(), "b".into()],
+            vec!["b".into(), "c".into()]
+        ]
+            .into_iter()
+            .collect();
+        assert_eq!(expected_base, actual_base);
+
+        // Expected results for Stratum 2: `derived`
+        let derived_query = build_query!(derived(_, _));
+        let actual_derived: HashSet<AnonymousGroundAtom> = runtime
+            .query(&derived_query)
+            .unwrap()
+            .collect();
+        let expected_derived: HashSet<AnonymousGroundAtom> = vec![
+            vec!["a".into(), "b".into()],
+            vec!["b".into(), "c".into()],
+            vec!["a".into(), "c".into()]
+        ]
+            .into_iter()
+            .collect();
+        assert_eq!(expected_derived, actual_derived);
+
+        // Expected results for Stratum 3: `top`
+        let top_query = build_query!(top(_, _));
+        let actual_top: HashSet<AnonymousGroundAtom> = runtime.query(&top_query).unwrap().collect();
+        let expected_top: HashSet<AnonymousGroundAtom> = vec![vec!["a".into(), "c".into()]]
+            .into_iter()
+            .collect();
+        assert_eq!(expected_top, actual_top);
+
+        // Test deletions to check if stratified rederivation works correctly
+        let edge_b_to_c = build_query!(edge("b", "c"));
+        runtime.remove(&edge_b_to_c);
+        runtime.poll();
+
+        // After deletion, only certain derived facts should remain
+        let actual_derived_after_delete: HashSet<AnonymousGroundAtom> = runtime
+            .query(&derived_query)
+            .unwrap()
+            .collect();
+        let expected_derived_after_delete: HashSet<AnonymousGroundAtom> = vec![
+            vec!["a".into(), "b".into()]
+        ]
+            .into_iter()
+            .collect();
+        assert_eq!(expected_derived_after_delete, actual_derived_after_delete);
+
+        let actual_top_after_delete: HashSet<AnonymousGroundAtom> = runtime
+            .query(&top_query)
+            .unwrap()
+            .collect();
+        let expected_top_after_delete: HashSet<AnonymousGroundAtom> = HashSet::new();
+        assert_eq!(expected_top_after_delete, actual_top_after_delete);
     }
 }
