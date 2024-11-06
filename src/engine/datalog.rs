@@ -2,10 +2,14 @@ use crate::engine::storage::RelationStorage;
 use crate::evaluation::query::pattern_match;
 use crate::evaluation::semi_naive::semi_naive_evaluation;
 use crate::helpers::helpers::{
-    add_prefix, split_program, DELTA_PREFIX, OVERDELETION_PREFIX, REDERIVATION_PREFIX,
+    add_prefix,
+    split_program,
+    DELTA_PREFIX,
+    OVERDELETION_PREFIX,
+    REDERIVATION_PREFIX,
 };
 use crate::program_transformations::delta_program::make_delta_program;
-use crate::program_transformations::dred::{make_overdeletion_program, make_rederivation_program};
+use crate::program_transformations::dred::{ make_overdeletion_program, make_rederivation_program };
 use datalog_syntax::*;
 use std::collections::HashSet;
 use crate::program_transformations::dependency_graph::sort_program;
@@ -29,8 +33,7 @@ impl MicroRuntime {
         self.unprocessed_insertions.insert(relation, ground_atom)
     }
     pub fn remove(&mut self, query: &Query) {
-        let deletion_targets: Vec<_> = self
-            .processed
+        let deletion_targets: Vec<_> = self.processed
             .get_relation(query.symbol)
             .iter()
             .map(|hash| hash)
@@ -38,13 +41,12 @@ impl MicroRuntime {
             .cloned()
             .collect();
 
-        self.unprocessed_deletions
-            .insert_registered(query.symbol, deletion_targets.into_iter());
+        self.unprocessed_deletions.insert_registered(query.symbol, deletion_targets.into_iter());
     }
     pub fn contains(
         &self,
         relation: &str,
-        ground_atom: &AnonymousGroundAtom,
+        ground_atom: &AnonymousGroundAtom
     ) -> Result<bool, String> {
         if !self.safe() {
             return Err("poll needed to obtain correct results".to_string());
@@ -58,37 +60,41 @@ impl MicroRuntime {
     }
     pub fn query<'a>(
         &'a self,
-        query: &'a Query,
+        query: &'a Query
     ) -> Result<impl Iterator<Item = AnonymousGroundAtom> + 'a, String> {
         if !self.safe() {
             return Err("poll needed to obtain correct results".to_string());
         }
-        return Ok(self
-            .processed
-            .get_relation(query.symbol)
-            .iter()
-            .filter(|fact| pattern_match(query, fact))
-            .map(|fact| fact.clone()));
+        return Ok(
+            self.processed
+                .get_relation(query.symbol)
+                .iter()
+                .filter(|fact| pattern_match(query, fact))
+                .map(|fact| fact.clone())
+        );
     }
+
     pub fn poll(&mut self) {
         if !self.unprocessed_deletions.is_empty() {
-            self.unprocessed_deletions.drain_all_relations().for_each(
-                |(relation_symbol, unprocessed_facts)| {
+            self.unprocessed_deletions
+                .drain_all_relations()
+                .for_each(|(relation_symbol, unprocessed_facts)| {
                     let mut overdeletion_symbol = relation_symbol.clone();
                     add_prefix(&mut overdeletion_symbol, OVERDELETION_PREFIX);
 
                     self.processed.insert_all(
                         &overdeletion_symbol,
-                        unprocessed_facts.into_iter().map(|fact| fact),
+                        unprocessed_facts.into_iter().map(|fact| fact)
                     );
-                },
-            );
+                });
 
-            let nonrecursive_delta_overdeletion_program = sort_program(&self.nonrecursive_delta_overdeletion_program);
+            let nonrecursive_delta_overdeletion_program = sort_program(
+                &self.nonrecursive_delta_overdeletion_program
+            );
             semi_naive_evaluation(
                 &mut self.processed,
                 &self.nonrecursive_delta_overdeletion_program,
-                &self.recursive_delta_overdeletion_program,
+                &self.recursive_delta_overdeletion_program
             );
             self.processed.drain_deltas();
             self.processed.overdelete();
@@ -96,7 +102,7 @@ impl MicroRuntime {
             semi_naive_evaluation(
                 &mut self.processed,
                 &self.nonrecursive_delta_rederivation_program,
-                &self.recursive_delta_rederivation_program,
+                &self.recursive_delta_rederivation_program
             );
             self.processed.drain_deltas();
             self.processed.rederive();
@@ -106,28 +112,31 @@ impl MicroRuntime {
         }
         if !self.unprocessed_insertions.is_empty() {
             // Additions
-            self.unprocessed_insertions.drain_all_relations().for_each(
-                |(relation_symbol, unprocessed_facts)| {
+            self.unprocessed_insertions
+                .drain_all_relations()
+                .for_each(|(relation_symbol, unprocessed_facts)| {
                     // We dump all unprocessed EDB relations into delta EDB relations
                     self.processed.insert_registered(
                         &format!("{}{}", DELTA_PREFIX, relation_symbol),
-                        unprocessed_facts.clone().into_iter(),
+                        unprocessed_facts.clone().into_iter()
                     );
                     // And in their respective place
-                    self.processed
-                        .insert_registered(&relation_symbol, unprocessed_facts.into_iter());
-                },
-            );
+                    self.processed.insert_registered(
+                        &relation_symbol,
+                        unprocessed_facts.into_iter()
+                    );
+                });
 
             semi_naive_evaluation(
                 &mut self.processed,
                 &self.nonrecursive_delta_program,
-                &self.recursive_delta_program,
+                &self.recursive_delta_program
             );
 
             self.processed.drain_deltas()
         }
     }
+
     pub fn new(program: Program) -> Self {
         let mut processed: RelationStorage = Default::default();
         let mut unprocessed_insertions: RelationStorage = Default::default();
@@ -142,68 +151,49 @@ impl MicroRuntime {
             relations.insert(&rule.head.symbol);
             delta_relations.insert(format!("{}{}", DELTA_PREFIX, rule.head.symbol));
             overdeletion_relations.insert(format!("{}{}", OVERDELETION_PREFIX, rule.head.symbol));
-            overdeletion_relations.insert(format!(
-                "{}{}{}",
-                DELTA_PREFIX, OVERDELETION_PREFIX, rule.head.symbol
-            ));
+            overdeletion_relations.insert(
+                format!("{}{}{}", DELTA_PREFIX, OVERDELETION_PREFIX, rule.head.symbol)
+            );
             rederive_relations.insert(format!("{}{}", REDERIVATION_PREFIX, rule.head.symbol));
-            rederive_relations.insert(format!(
-                "{}{}{}",
-                DELTA_PREFIX, REDERIVATION_PREFIX, rule.head.symbol
-            ));
+            rederive_relations.insert(
+                format!("{}{}{}", DELTA_PREFIX, REDERIVATION_PREFIX, rule.head.symbol)
+            );
 
             rule.body.iter().for_each(|body_atom| {
                 relations.insert(&body_atom.symbol);
                 delta_relations.insert(format!("{}{}", DELTA_PREFIX, body_atom.symbol));
-                overdeletion_relations
-                    .insert(format!("{}{}", OVERDELETION_PREFIX, body_atom.symbol));
-                overdeletion_relations.insert(format!(
-                    "{}{}{}",
-                    DELTA_PREFIX, OVERDELETION_PREFIX, body_atom.symbol
-                ));
+                overdeletion_relations.insert(
+                    format!("{}{}", OVERDELETION_PREFIX, body_atom.symbol)
+                );
+                overdeletion_relations.insert(
+                    format!("{}{}{}", DELTA_PREFIX, OVERDELETION_PREFIX, body_atom.symbol)
+                );
             })
         });
 
         relations.iter().for_each(|relation_symbol| {
-            processed
-                .inner
-                .entry(relation_symbol.to_string())
-                .or_default();
+            processed.inner.entry(relation_symbol.to_string()).or_default();
 
-            unprocessed_insertions
-                .inner
-                .entry(relation_symbol.to_string())
-                .or_default();
+            unprocessed_insertions.inner.entry(relation_symbol.to_string()).or_default();
 
-            unprocessed_deletions
-                .inner
-                .entry(relation_symbol.to_string())
-                .or_default();
+            unprocessed_deletions.inner.entry(relation_symbol.to_string()).or_default();
         });
 
         delta_relations.iter().for_each(|relation_symbol| {
-            processed
-                .inner
-                .entry(relation_symbol.to_string())
-                .or_default();
+            processed.inner.entry(relation_symbol.to_string()).or_default();
         });
 
         overdeletion_relations.iter().for_each(|relation_symbol| {
-            processed
-                .inner
-                .entry(relation_symbol.to_string())
-                .or_default();
+            processed.inner.entry(relation_symbol.to_string()).or_default();
         });
 
         rederive_relations.iter().for_each(|relation_symbol| {
-            processed
-                .inner
-                .entry(relation_symbol.to_string())
-                .or_default();
+            processed.inner.entry(relation_symbol.to_string()).or_default();
         });
 
-        let (nonrecursive_delta_program, recursive_delta_program) =
-            split_program(make_delta_program(&program, true));
+        let (nonrecursive_delta_program, recursive_delta_program) = split_program(
+            make_delta_program(&program, true)
+        );
 
         let overdeletion_program = make_delta_program(&make_overdeletion_program(&program), false);
         let (nonrecursive_delta_overdeletion_program, recursive_delta_overdeletion_program) =
@@ -214,8 +204,12 @@ impl MicroRuntime {
             split_program(rederivation_program);
 
         let nonrecursive_delta_program = sort_program(&nonrecursive_delta_program);
-        let nonrecursive_delta_overdeletion_program = sort_program(&nonrecursive_delta_overdeletion_program);
-        let nonrecursive_delta_rederivation_program = sort_program(&nonrecursive_delta_rederivation_program);
+        let nonrecursive_delta_overdeletion_program = sort_program(
+            &nonrecursive_delta_overdeletion_program
+        );
+        let nonrecursive_delta_rederivation_program = sort_program(
+            &nonrecursive_delta_rederivation_program
+        );
 
         Self {
             processed,
@@ -244,7 +238,8 @@ mod tests {
 
     #[test]
     fn integration_test_insertions_only() {
-        let tc_program = program! {
+        let tc_program =
+            program! {
             tc(?x, ?y) <- [e(?x, ?y)],
             tc(?x, ?z) <- [e(?x, ?y), tc(?y, ?z)],
         };
@@ -253,12 +248,12 @@ mod tests {
         vec![
             vec!["a".into(), "b".into()],
             vec!["b".into(), "c".into()],
-            vec!["c".into(), "d".into()],
+            vec!["c".into(), "d".into()]
         ]
-        .into_iter()
-        .for_each(|edge| {
-            runtime.insert("e", edge);
-        });
+            .into_iter()
+            .for_each(|edge| {
+                runtime.insert("e", edge);
+            });
 
         runtime.poll();
 
@@ -277,21 +272,23 @@ mod tests {
             vec!["a".into(), "c".into()],
             vec!["b".into(), "d".into()],
             // Third iter
-            vec!["a".into(), "d".into()],
+            vec!["a".into(), "d".into()]
         ]
-        .into_iter()
-        .collect();
+            .into_iter()
+            .collect();
         assert_eq!(expected_all, actual_all);
 
-        let actual_all_from_a: HashSet<AnonymousGroundAtom> =
-            runtime.query(&all_from_a).unwrap().collect();
+        let actual_all_from_a: HashSet<AnonymousGroundAtom> = runtime
+            .query(&all_from_a)
+            .unwrap()
+            .collect();
         let expected_all_from_a: HashSet<AnonymousGroundAtom> = vec![
             vec!["a".into(), "b".into()],
             vec!["a".into(), "c".into()],
-            vec!["a".into(), "d".into()],
+            vec!["a".into(), "d".into()]
         ]
-        .into_iter()
-        .collect();
+            .into_iter()
+            .collect();
         assert_eq!(expected_all_from_a, actual_all_from_a);
 
         expected_all.iter().for_each(|fact| {
@@ -308,8 +305,10 @@ mod tests {
         runtime.poll();
         assert!(runtime.safe());
 
-        let actual_all_after_update: HashSet<AnonymousGroundAtom> =
-            runtime.query(&all).unwrap().collect();
+        let actual_all_after_update: HashSet<AnonymousGroundAtom> = runtime
+            .query(&all)
+            .unwrap()
+            .collect();
         let expected_all_after_update: HashSet<AnonymousGroundAtom> = vec![
             vec!["a".into(), "b".into()],
             vec!["b".into(), "c".into()],
@@ -323,26 +322,25 @@ mod tests {
             vec!["d".into(), "e".into()],
             vec!["c".into(), "e".into()],
             vec!["b".into(), "e".into()],
-            vec!["a".into(), "e".into()],
+            vec!["a".into(), "e".into()]
         ]
-        .into_iter()
-        .collect();
+            .into_iter()
+            .collect();
         assert_eq!(expected_all_after_update, actual_all_after_update);
 
-        let actual_all_from_a_after_update: HashSet<AnonymousGroundAtom> =
-            runtime.query(&all_from_a).unwrap().collect();
+        let actual_all_from_a_after_update: HashSet<AnonymousGroundAtom> = runtime
+            .query(&all_from_a)
+            .unwrap()
+            .collect();
         let expected_all_from_a_after_update: HashSet<AnonymousGroundAtom> = vec![
             vec!["a".into(), "b".into()],
             vec!["a".into(), "c".into()],
             vec!["a".into(), "d".into()],
-            vec!["a".into(), "e".into()],
+            vec!["a".into(), "e".into()]
         ]
-        .into_iter()
-        .collect();
-        assert_eq!(
-            expected_all_from_a_after_update,
-            actual_all_from_a_after_update
-        );
+            .into_iter()
+            .collect();
+        assert_eq!(expected_all_from_a_after_update, actual_all_from_a_after_update);
     }
     #[test]
     fn integration_test_deletions() {
@@ -350,7 +348,8 @@ mod tests {
         let all = build_query!(tc(_, _));
         let all_from_a = build_query!(tc("a", _));
 
-        let tc_program = program! {
+        let tc_program =
+            program! {
             tc(?x, ?y) <- [e(?x, ?y)],
             tc(?x, ?z) <- [tc(?x, ?y), tc(?y, ?z)],
         };
@@ -362,12 +361,12 @@ mod tests {
             vec!["a".into(), "e".into()],
             vec!["b".into(), "c".into()],
             vec!["c".into(), "d".into()],
-            vec!["d".into(), "e".into()],
+            vec!["d".into(), "e".into()]
         ]
-        .into_iter()
-        .for_each(|edge| {
-            runtime.insert("e", edge);
-        });
+            .into_iter()
+            .for_each(|edge| {
+                runtime.insert("e", edge);
+            });
 
         runtime.poll();
 
@@ -385,22 +384,24 @@ mod tests {
             // Fourth iter
             vec!["d".into(), "e".into()],
             vec!["c".into(), "e".into()],
-            vec!["b".into(), "e".into()],
+            vec!["b".into(), "e".into()]
         ]
-        .into_iter()
-        .collect();
+            .into_iter()
+            .collect();
         assert_eq!(expected_all, actual_all);
 
-        let actual_all_from_a: HashSet<AnonymousGroundAtom> =
-            runtime.query(&all_from_a).unwrap().collect();
+        let actual_all_from_a: HashSet<AnonymousGroundAtom> = runtime
+            .query(&all_from_a)
+            .unwrap()
+            .collect();
         let expected_all_from_a: HashSet<AnonymousGroundAtom> = vec![
             vec!["a".into(), "b".into()],
             vec!["a".into(), "c".into()],
             vec!["a".into(), "d".into()],
-            vec!["a".into(), "e".into()],
+            vec!["a".into(), "e".into()]
         ]
-        .into_iter()
-        .collect();
+            .into_iter()
+            .collect();
         assert_eq!(expected_all_from_a, actual_all_from_a);
 
         // Update
@@ -411,8 +412,10 @@ mod tests {
         runtime.poll();
         assert!(runtime.safe());
 
-        let actual_all_after_update: HashSet<AnonymousGroundAtom> =
-            runtime.query(&all).unwrap().collect();
+        let actual_all_after_update: HashSet<AnonymousGroundAtom> = runtime
+            .query(&all)
+            .unwrap()
+            .collect();
         let expected_all_after_update: HashSet<AnonymousGroundAtom> = vec![
             vec!["a".into(), "b".into()],
             vec!["b".into(), "c".into()],
@@ -423,25 +426,24 @@ mod tests {
             // Third iter
             vec!["a".into(), "d".into()],
             // This remains
-            vec!["a".into(), "e".into()],
+            vec!["a".into(), "e".into()]
         ]
-        .into_iter()
-        .collect();
+            .into_iter()
+            .collect();
         assert_eq!(expected_all_after_update, actual_all_after_update);
 
-        let actual_all_from_a_after_update: HashSet<AnonymousGroundAtom> =
-            runtime.query(&all_from_a).unwrap().collect();
+        let actual_all_from_a_after_update: HashSet<AnonymousGroundAtom> = runtime
+            .query(&all_from_a)
+            .unwrap()
+            .collect();
         let expected_all_from_a_after_update: HashSet<AnonymousGroundAtom> = vec![
             vec!["a".into(), "b".into()],
             vec!["a".into(), "c".into()],
             vec!["a".into(), "d".into()],
-            vec!["a".into(), "e".into()],
+            vec!["a".into(), "e".into()]
         ]
-        .into_iter()
-        .collect();
-        assert_eq!(
-            expected_all_from_a_after_update,
-            actual_all_from_a_after_update
-        );
+            .into_iter()
+            .collect();
+        assert_eq!(expected_all_from_a_after_update, actual_all_from_a_after_update);
     }
 }
