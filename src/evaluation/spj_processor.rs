@@ -655,7 +655,25 @@ mod test {
         assert_eq!(expected_stack, Stack::from(rule))
     }
 
-  
+    #[test]
+    fn from_unary_rule_with_negation_into_stack() {
+        let rule = rule! { Y(?x, ?y) <- [T(?x, ?y), !E(?x, ?y)] };
+
+        let expected_stack = Stack {
+            inner: vec![
+                Instruction::Move("T".to_string()),
+                Instruction::Move("E".to_string()),
+                Instruction::Antijoin("T".to_string(), "E".to_string(), vec![(0, 0), (1, 1)]),
+                Instruction::Project(
+                    "Y".to_string(),
+                    vec![ProjectionInput::Column(0), ProjectionInput::Column(1)]
+                )
+            ],
+        };
+
+        assert_eq!(expected_stack, Stack::from(rule))
+    }
+
     #[test]
     fn from_binary_rule_into_stack() {
         let rule = rule! { T(?y, 0, ?x) <- [T(?x, 2, ?y), T(?y, 2, ?z)] };
@@ -716,26 +734,6 @@ mod test {
                         ProjectionInput::Value(TypedValue::Int(0)),
                         ProjectionInput::Column(8)
                     ]
-                )
-            ],
-        };
-
-        assert_eq!(expected_stack, Stack::from(rule))
-    }
-     
-
-    #[test]
-    fn from_antijoin_rule_into_stack() {
-        let rule = rule! { T(?x, ?y) <- [T(?x, ?z), !T(?z, ?y)] };
-
-        let expected_stack = Stack {
-            inner: vec![
-                Instruction::Move("T".to_string()),
-                Instruction::Move("T".to_string()),
-                Instruction::Antijoin("T".to_string(), "T".to_string(), vec![(1, 0)]),
-                Instruction::Project(
-                    "T".to_string(),
-                    vec![ProjectionInput::Column(0), ProjectionInput::Column(3)]
                 )
             ],
         };
