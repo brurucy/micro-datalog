@@ -111,15 +111,25 @@ fn parse_triple(line: &str) -> (&str, &str, &str) {
 
 fn main() {
     let program = program! {
-        T(?s, ?p, ?o) <- [RDF(?s, ?p, ?o)],
-        T(?y, 0, ?x) <- [T(?a, 3, ?x), T(?y, ?a, ?z)],
-        T(?z, 0, ?x) <- [T(?a, 4, ?x), T(?y, ?a, ?z)],
-        T(?x, 2, ?z) <- [T(?x, 2, ?y), T(?y, 2, ?z)],
-        T(?x, 1, ?z) <- [T(?x, 1, ?y), T(?y, 1, ?z)],
-        T(?z, 0, ?y) <- [T(?x, 1, ?y), T(?z, 0, ?x)],
-        T(?x, ?b, ?y) <- [T(?a, 2, ?b), T(?x, ?a, ?y)]
+        T(?s) <- [RDF(1, ?s)],
     };
+    println!("{:?}", program);
 
+    let mut micro_runtime = MicroRuntime::new(program);
+    micro_runtime.insert("RDF", vec![TypedValue::from(0), TypedValue::from(1)]);
+    micro_runtime.insert("RDF", vec![TypedValue::from(1), TypedValue::from(2)]);
+    micro_runtime.insert("RDF", vec![TypedValue::from(1), TypedValue::from(3)]);
+
+    micro_runtime.poll();
+    let mut query = QueryBuilder::new("T");
+    query.with_any();
+
+    let query_: Query = query.into();
+    let result = micro_runtime.query(&query_).unwrap();
+
+    println!("{:?}", result.collect::<Vec<_>>());
+
+    /*
     let mut rodeo = Rodeo::default();
     rodeo.get_or_intern(TYPE).into_usize();
     rodeo.get_or_intern(SUB_CLASS_OF);
@@ -165,4 +175,5 @@ fn main() {
     ascnt_runtime.run();
     println!("ascent: {} milis", now.elapsed().as_millis());
     println!("inferred tuples: {}", ascnt_runtime.T.len());
+    */
 }

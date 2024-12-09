@@ -324,9 +324,17 @@ impl From<Rule> for Stack {
                     }
                 }
             } else {
+                let symbol = current_atom.symbol.clone();
+                let sign = current_atom.sign;
+                let terms = current_atom.terms.clone();
+
                 if operations.is_empty() {
-                    operations.push(Instruction::Move(current_atom.symbol.clone()));
+                    operations.push(Instruction::Move(symbol.clone()));
                 }
+
+                if let Some(selection) = get_selection(&symbol, &sign, &terms) {
+                    operations.push(selection);
+                } 
 
                 let projection = get_projection(&rule);
 
@@ -740,4 +748,27 @@ mod test {
 
         assert_eq!(expected_stack, Stack::from(rule))
     }
+
+    #[test]
+    fn simple_one_atom_with_select() {
+        let rule = rule! { T(?s) <- [RDF(1, ?s)] };
+
+        let expected_stack = Stack {
+            inner: vec![
+                Instruction::Move("RDF".to_string()),
+                Instruction::Select("RDF".to_string(), true, 0, TypedValue::Int(1)),
+                Instruction::Project(
+                    "T".to_string(),
+                    vec![
+                        ProjectionInput::Column(1),
+                    ]
+                )
+            ],
+        };
+
+        let actual_stack = Stack::from(rule);
+
+        assert_eq!(actual_stack, expected_stack)
+    }
+
 }
