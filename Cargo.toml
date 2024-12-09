@@ -29,3 +29,7 @@ path = "src/bin.rs"
 [profile.profiling]
 inherits = "release"
 debug = true
+
+[[test]]
+name = "magic_tests"
+path = "test/magic_tests.rs"
