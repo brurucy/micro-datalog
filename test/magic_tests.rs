@@ -91,7 +91,7 @@ fn test_top_down_evaluation_tc() {
         tc(?x, ?z) <- [tc(?x, ?y), tc(?y, ?z)],
     };
 
-    // Create a runtime with the program and facts
+    // Create a runtime with the program
     let mut runtime = TopDownRuntime::new(program);
 
     vec![vec!["a".into(), "b".into()], vec!["b".into(), "c".into()], vec!["c".into(), "d".into()]]
