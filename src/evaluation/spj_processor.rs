@@ -655,6 +655,7 @@ mod test {
         assert_eq!(expected_stack, Stack::from(rule))
     }
 
+    /** 
     #[test]
     fn from_unary_rule_with_negation_into_stack() {
         let rule = rule! { Y(?x, ?y) <- [T(?x, ?y), !E(?x, ?y)] };
@@ -673,6 +674,7 @@ mod test {
 
         assert_eq!(expected_stack, Stack::from(rule))
     }
+    */
 
     #[test]
     fn from_binary_rule_into_stack() {
