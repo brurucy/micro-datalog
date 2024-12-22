@@ -3,6 +3,9 @@ use crate::evaluation::query::pattern_match;
 use crate::evaluation::semi_naive::semi_naive_evaluation;
 use crate::helpers::helpers::split_program;
 use crate::program_transformations::dependency_graph::sort_program;
+use crate::program_transformations::magic_sets::{
+    apply_magic_transformation, create_magic_seed_fact,
+};
 use datalog_syntax::*;
 use indexmap::IndexSet;
 
@@ -83,9 +86,95 @@ impl MicroRuntime {
         program: Program,
         strategy: &str,
     ) -> Result<impl Iterator<Item = AnonymousGroundAtom> + 'a, String> {
-        let mut evaluator =
-            MagicEvaluator::new(&mut self.processed, &mut self.unprocessed_insertions);
-        evaluator.evaluate_query(query, program)
+        // Create adorned query symbol by combining original symbol with binding pattern
+        let pattern_string: String = query
+            .matchers
+            .iter()
+            .map(|matcher| match matcher {
+                Matcher::Constant(_) => 'b',
+                Matcher::Any => 'f',
+            })
+            .collect();
+
+        let adorned_symbol = format!("{}_{}", query.symbol, pattern_string);
+
+        let query_temp = Query {
+            matchers: query.matchers.clone(),
+            symbol: &adorned_symbol,
+        };
+        // Transform program using magic sets
+        let magic_program = apply_magic_transformation(&program, query);
+
+        // Create new runtime with transformed program
+        let mut runtime = MicroRuntime::new(magic_program.clone());
+
+        for (rel_name, facts) in &self.processed.inner {
+            if !program
+                .inner
+                .iter()
+                .any(|rule| rule.head.symbol == *rel_name)
+            {
+                if !facts.is_empty() {
+                    runtime
+                        .processed
+                        .insert_registered(rel_name, facts.iter().cloned());
+                }
+            }
+        }
+
+        // Also collect unprocessed insertions for base predicates
+        for (rel_name, facts) in &self.unprocessed_insertions.inner {
+            if !program
+                .inner
+                .iter()
+                .any(|rule| rule.head.symbol == *rel_name)
+            {
+                if !facts.is_empty() {
+                    runtime
+                        .unprocessed_insertions
+                        .insert_registered(&rel_name, facts.iter().cloned());
+                }
+            }
+        }
+
+        // Also initialize storage for all adorned predicates
+        for rule in magic_program.inner {
+            runtime
+                .unprocessed_insertions
+                .inner
+                .entry(rule.head.symbol.clone())
+                .or_default();
+            for body_atom in &rule.body {
+                runtime
+                    .unprocessed_insertions
+                    .inner
+                    .entry(body_atom.symbol.clone())
+                    .or_default();
+            }
+        }
+
+        // Add magic seed fact
+        let (magic_pred, seed_fact) = create_magic_seed_fact(query);
+
+        runtime
+            .unprocessed_insertions
+            .inner
+            .entry(magic_pred.clone())
+            .or_default();
+
+        runtime.insert(&magic_pred, seed_fact);
+
+        runtime.poll();
+
+        let result: Vec<_> = runtime
+            .processed
+            .get_relation(query_temp.symbol)
+            .iter()
+            .filter(|fact| pattern_match(&query_temp, fact))
+            .map(|fact| (**fact).clone())
+            .collect();
+
+        return Ok(result.into_iter());
     }
 
     pub fn new(program: Program) -> Self {
@@ -374,5 +463,105 @@ mod tests {
         let actual_top: HashSet<(&str, &str)> = convert_fact!(runtime.query(&top_query));
         let expected_top: HashSet<(&str, &str)> = vec![("a", "c")].into_iter().collect();
         assert_eq!(expected_top, actual_top);
+    }
+
+    #[test]
+    fn test_query_program_same_generation() {
+        let program = program! {
+            sg(?x, ?y) <- [flat(?x, ?y)],
+            sg(?y, ?x) <- [sg(?x, ?y)],
+            sg(?x, ?y) <- [up(?x, ?z1), down(?z1, ?y)],
+            sg(?x, ?y) <- [up(?x, ?z1), sg(?z1, ?z2), down(?z2, ?y)]
+        };
+
+        let mut runtime = MicroRuntime::new(program.clone());
+
+        // Set up tree structure:
+        //       a1    a2   (flat connects these)
+        //      /  \  /  \
+        //    b1  b2 b3  b4
+        runtime.insert("up", ("b1", "a1")); // b1 up to a1
+        runtime.insert("up", ("b2", "a1")); // b2 up to a1
+        runtime.insert("up", ("b3", "a2")); // b3 up to a2
+        runtime.insert("up", ("b4", "a2")); // b4 up to a2
+
+        // Direct same-generation relationships
+        runtime.insert("flat", ("a1", "a2")); // a1 same gen as a2
+
+        runtime.insert("down", ("a1", "b1")); // a1 down to b1
+        runtime.insert("down", ("a1", "b2")); // a1 down to b2
+        runtime.insert("down", ("a2", "b3")); // a2 down to b3
+        runtime.insert("down", ("a2", "b4")); // a2 down to b4
+
+        runtime.poll();
+
+        // Query for nodes in same generation as b1 (should find b2, b3, b4)
+        let query = build_query!(sg("b1", _));
+        let results: HashSet<_> =
+            convert_fact!(runtime.query_program(&query, program, "Bottom-up"));
+
+        // b1 should be in same generation as b2, b3, and b4
+        let expected: HashSet<_> = vec![
+            ("b1", "b2"), // Same parent a1
+            ("b1", "b3"), // Through flat a1-a2
+            ("b1", "b4"), // Through flat a1-a2
+            ("b1", "b1"), // Every node is in same gen with itself
+        ]
+        .into_iter()
+        .collect();
+
+        assert_eq!(expected, results);
+    }
+
+    #[test]
+    fn test_query_program_basic_ancestor() {
+        // Set up a simple ancestor program
+        let program = program! {
+            ancestor(?x, ?y) <- [parent(?x, ?y)],
+            ancestor(?x, ?z) <- [parent(?x, ?y), ancestor(?y, ?z)]
+        };
+
+        // Create runtime and add base facts
+        let mut runtime = MicroRuntime::new(program.clone());
+        runtime.insert("parent", vec!["john", "bob"]);
+        runtime.insert("parent", vec!["bob", "mary"]);
+
+        // Query for ancestors of john
+        let query = build_query!(ancestor("john", _));
+        let results: HashSet<_> =
+            convert_fact!(runtime.query_program(&query, program, "Bottom-up"));
+
+        // Expected results - john is ancestor of both bob and mary
+        let expected: HashSet<_> = vec![("john", "bob"), ("john", "mary")]
+            .into_iter()
+            .collect();
+
+        assert_eq!(expected, results);
+    }
+
+    #[test]
+    fn test_query_program_ff() {
+        // Set up a simple ancestor program
+        let program = program! {
+            ancestor(?x, ?y) <- [parent(?x, ?y)],
+            ancestor(?x, ?z) <- [parent(?x, ?y), ancestor(?y, ?z)]
+        };
+
+        // Create runtime and add base facts
+        let mut runtime = MicroRuntime::new(program.clone());
+        runtime.insert("parent", vec!["john", "bob"]);
+        runtime.insert("parent", vec!["bob", "mary"]);
+
+        // Query for ancestors of john
+        let query = build_query!(ancestor(_, _));
+        let results: HashSet<_> =
+            convert_fact!(runtime.query_program(&query, program, "Bottom-up"));
+
+        // Expected results - john is ancestor of both bob and mary
+        let expected: HashSet<_> = vec![("john", "bob"), ("bob", "mary"), ("john", "mary")]
+            .into_iter()
+            .collect();
+
+        assert_eq!(expected, results);
     }
 }
