@@ -3,12 +3,15 @@ use crate::evaluation::query::pattern_match;
 use crate::evaluation::semi_naive::semi_naive_evaluation;
 use crate::helpers::helpers::split_program;
 use crate::program_transformations::dependency_graph::sort_program;
+use crate::program_transformations::magic_sets::{
+    apply_magic_transformation, create_magic_seed_fact,
+};
 use datalog_syntax::*;
 use indexmap::IndexSet;
 
 pub struct MicroRuntime {
-    processed: RelationStorage,
-    unprocessed_insertions: RelationStorage,
+    pub(crate) processed: RelationStorage,
+    pub(crate) unprocessed_insertions: RelationStorage,
     nonrecursive_program: Program,
     recursive_program: Program,
 }
@@ -54,13 +57,110 @@ impl MicroRuntime {
                         .insert_registered(&relation_symbol, unprocessed_facts.into_iter());
                 },
             );
-
-            semi_naive_evaluation(
-                &mut self.processed,
-                &self.nonrecursive_program,
-                &self.recursive_program,
-            );
         }
+
+        semi_naive_evaluation(
+            &mut self.processed,
+            &self.nonrecursive_program,
+            &self.recursive_program,
+        );
+    }
+
+    pub fn query_program<'a>(
+        &'a mut self,
+        query: &'a Query,
+        program: Program,
+        strategy: &str,
+    ) -> Result<impl Iterator<Item = AnonymousGroundAtom> + 'a, String> {
+        // Create adorned query symbol by combining original symbol with binding pattern
+        let pattern_string: String = query
+            .matchers
+            .iter()
+            .map(|matcher| match matcher {
+                Matcher::Constant(_) => 'b',
+                Matcher::Any => 'f',
+            })
+            .collect();
+
+        let adorned_symbol = format!("{}_{}", query.symbol, pattern_string);
+
+        let query_temp = Query {
+            matchers: query.matchers.clone(),
+            symbol: &adorned_symbol,
+        };
+        // Transform program using magic sets
+        let magic_program = apply_magic_transformation(&program, query);
+
+        // Create new runtime with transformed program
+        let mut runtime = MicroRuntime::new(magic_program.clone());
+
+        for (rel_name, facts) in &self.processed.inner {
+            if !program
+                .inner
+                .iter()
+                .any(|rule| rule.head.symbol == *rel_name)
+            {
+                if !facts.is_empty() {
+                    runtime
+                        .processed
+                        .insert_registered(rel_name, facts.iter().cloned());
+                }
+            }
+        }
+
+        // Also collect unprocessed insertions for base predicates
+        for (rel_name, facts) in &self.unprocessed_insertions.inner {
+            if !program
+                .inner
+                .iter()
+                .any(|rule| rule.head.symbol == *rel_name)
+            {
+                if !facts.is_empty() {
+                    runtime
+                        .unprocessed_insertions
+                        .insert_registered(&rel_name, facts.iter().cloned());
+                }
+            }
+        }
+
+        // Also initialize storage for all adorned predicates
+        for rule in magic_program.inner {
+            runtime
+                .unprocessed_insertions
+                .inner
+                .entry(rule.head.symbol.clone())
+                .or_default();
+            for body_atom in &rule.body {
+                runtime
+                    .unprocessed_insertions
+                    .inner
+                    .entry(body_atom.symbol.clone())
+                    .or_default();
+            }
+        }
+
+        // Add magic seed fact
+        let (magic_pred, seed_fact) = create_magic_seed_fact(query);
+
+        runtime
+            .unprocessed_insertions
+            .inner
+            .entry(magic_pred.clone())
+            .or_default();
+
+        runtime.insert(&magic_pred, seed_fact);
+
+        runtime.poll();
+
+        let result: Vec<_> = runtime
+            .processed
+            .get_relation(query_temp.symbol)
+            .iter()
+            .filter(|fact| pattern_match(&query_temp, fact))
+            .map(|fact| (**fact).clone())
+            .collect();
+
+        return Ok(result.into_iter());
     }
 
     pub fn new(program: Program) -> Self {
@@ -89,6 +189,7 @@ impl MicroRuntime {
         });
 
         let (nonrecursive_program, recursive_program) = split_program(program.clone());
+
         let nonrecursive_program = sort_program(&nonrecursive_program);
 
         Self {
@@ -98,6 +199,7 @@ impl MicroRuntime {
             recursive_program,
         }
     }
+
     pub fn safe(&self) -> bool {
         self.unprocessed_insertions.is_empty()
     }
@@ -381,7 +483,8 @@ mod tests {
 
         // Query for nodes in same generation as b1 (should find b2, b3, b4)
         let query = build_query!(sg("b1", _));
-        let results: HashSet<_> = convert_fact!(runtime.query(&query));
+        let results: HashSet<_> =
+            convert_fact!(runtime.query_program(&query, program, "Bottom-up"));
 
         // b1 should be in same generation as b2, b3, and b4
         let expected: HashSet<_> = vec![
@@ -392,6 +495,58 @@ mod tests {
         ]
         .into_iter()
         .collect();
+
+        assert_eq!(expected, results);
+    }
+
+    #[test]
+    fn test_query_program_basic_ancestor() {
+        // Set up a simple ancestor program
+        let program = program! {
+            ancestor(?x, ?y) <- [parent(?x, ?y)],
+            ancestor(?x, ?z) <- [parent(?x, ?y), ancestor(?y, ?z)]
+        };
+
+        // Create runtime and add base facts
+        let mut runtime = MicroRuntime::new(program.clone());
+        runtime.insert("parent", vec!["john", "bob"]);
+        runtime.insert("parent", vec!["bob", "mary"]);
+
+        // Query for ancestors of john
+        let query = build_query!(ancestor("john", _));
+        let results: HashSet<_> =
+            convert_fact!(runtime.query_program(&query, program, "Bottom-up"));
+
+        // Expected results - john is ancestor of both bob and mary
+        let expected: HashSet<_> = vec![("john", "bob"), ("john", "mary")]
+            .into_iter()
+            .collect();
+
+        assert_eq!(expected, results);
+    }
+
+    #[test]
+    fn test_query_program_ff() {
+        // Set up a simple ancestor program
+        let program = program! {
+            ancestor(?x, ?y) <- [parent(?x, ?y)],
+            ancestor(?x, ?z) <- [parent(?x, ?y), ancestor(?y, ?z)]
+        };
+
+        // Create runtime and add base facts
+        let mut runtime = MicroRuntime::new(program.clone());
+        runtime.insert("parent", vec!["john", "bob"]);
+        runtime.insert("parent", vec!["bob", "mary"]);
+
+        // Query for ancestors of john
+        let query = build_query!(ancestor(_, _));
+        let results: HashSet<_> =
+            convert_fact!(runtime.query_program(&query, program, "Bottom-up"));
+
+        // Expected results - john is ancestor of both bob and mary
+        let expected: HashSet<_> = vec![("john", "bob"), ("bob", "mary"), ("john", "mary")]
+            .into_iter()
+            .collect();
 
         assert_eq!(expected, results);
     }

@@ -31,7 +31,7 @@ fn main() {
         tc(?x, ?z) <- [e(?x, ?y), tc(?y, ?z)]
     };
 
-    let mut micro_runtime = MicroRuntime::new(program);
+    let mut micro_runtime = MicroRuntime::new(program.clone());
     let mut ascnt_runtime = AscentProgram::default();
     let mut crepe_runtime = Crepe::new();
 
@@ -50,7 +50,11 @@ fn main() {
     micro_runtime.poll();
     println!("micro: {} milis", now.elapsed().as_millis());
     let q = build_query!(tc(_, _));
-    let answer: Vec<_> = micro_runtime.query(&q).unwrap().into_iter().collect();
+    let answer: Vec<_> = micro_runtime
+        .query_program(&q, program, "Bottom-up")
+        .unwrap()
+        .into_iter()
+        .collect();
     println!("inferred tuples: {}", answer.len());
 
     let now = Instant::now();
