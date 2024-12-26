@@ -1,11 +1,8 @@
-use std::time::Instant;
-use crate::engine::ephemeral_storage::{ EphemeralStorage, EphemeralValue };
+use crate::engine::ephemeral_storage::{ IndexStorage, EphemeralValue };
 use crate::engine::storage::RelationStorage;
 use ahash::{ HashMap, HashSet };
 use datalog_syntax::{ AnonymousGroundAtom, Rule, Term, TypedValue, Variable };
 use crate::evaluation::spj_processor::Instruction::{ Join, Project, Antijoin };
-use rayon::prelude::*;
-
 // This implements a minimal SPJ (Select, Project, Join) processor
 
 pub type Column = usize;
@@ -296,7 +293,7 @@ impl<'a> RuleEvaluator<'a> {
     pub fn step(&self) -> impl Iterator<Item = AnonymousGroundAtom> + 'a {
         let stack = Stack::from(self.rule.clone());
 
-        let mut out = EphemeralStorage::default();
+        let mut out = IndexStorage::default();
 
         // There will always be at least two elements in the stack. Move or Select and then Projection.
         let penultimate_operation = stack.inner.len() - 2;
@@ -352,13 +349,19 @@ impl<'a> RuleEvaluator<'a> {
                         relation_symbol_to_be_projected = join_result_name.clone();
                     }
 
-                    let join_result = boxcar::vec![];
+                    let mut join_result = vec![];
+                    let is_left_product = { 
+                        if let Some(left_allocation) = left_relation.get(0) {
+                            match left_allocation {
+                                EphemeralValue::FactRef(_) => false,
+                                EphemeralValue::JoinResult(_) => true,
+                            }
+                        } else {
+                            false
+                        }
+                    };
 
-                    left_relation.into_par_iter().for_each(|left_allocation| {
-                        let is_left_product = match left_allocation {
-                            EphemeralValue::FactRef(_) => false,
-                            EphemeralValue::JoinResult(_) => true,
-                        };
+                    left_relation.into_iter().for_each(|left_allocation| {
                         let mut join_key_positions = None;
                         if is_left_product {
                             join_key_positions = Some(
@@ -391,7 +394,7 @@ impl<'a> RuleEvaluator<'a> {
                                 })
                             );
                         }
-
+                
                         right_relation.into_iter().for_each(|right_allocation| {
                             let right_fact = match right_allocation {
                                 EphemeralValue::FactRef(fact) => fact,

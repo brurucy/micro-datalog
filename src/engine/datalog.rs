@@ -12,7 +12,6 @@ use crate::program_transformations::delta_program::make_delta_program;
 use crate::program_transformations::dred::{ make_overdeletion_program, make_rederivation_program };
 use datalog_syntax::*;
 use std::collections::HashSet;
-use std::sync::Arc;
 use crate::program_transformations::dependency_graph::sort_program;
 
 pub struct MicroRuntime {
@@ -76,68 +75,62 @@ impl MicroRuntime {
     }
 
     pub fn poll(&mut self) {
-        let sorted_program = sort_program(&self.program);
-        for stratum_rules in sorted_program.inner.iter() {
-            if !self.unprocessed_deletions.is_empty() {
-                self.unprocessed_deletions
-                    .drain_all_relations()
-                    .for_each(|(relation_symbol, unprocessed_facts)| {
-                        let mut overdeletion_symbol = relation_symbol.clone();
-                        add_prefix(&mut overdeletion_symbol, OVERDELETION_PREFIX);
+        if !self.unprocessed_deletions.is_empty() {
+            self.unprocessed_deletions
+                .drain_all_relations()
+                .for_each(|(relation_symbol, unprocessed_facts)| {
+                    let mut overdeletion_symbol = relation_symbol.clone();
+                    add_prefix(&mut overdeletion_symbol, OVERDELETION_PREFIX);
 
-                        self.processed.insert_all(
-                            &overdeletion_symbol,
-                            unprocessed_facts.into_iter().map(|fact| fact)
-                        );
-                    });
+                    self.processed.insert_all(
+                        &overdeletion_symbol,
+                        unprocessed_facts.into_iter().map(|fact| fact)
+                    );
+                });
 
-                let nonrecursive_delta_overdeletion_program = sort_program(
-                    &self.nonrecursive_delta_overdeletion_program
-                );
-                semi_naive_evaluation(
-                    &mut self.processed,
-                    &self.nonrecursive_delta_overdeletion_program,
-                    &self.recursive_delta_overdeletion_program
-                );
-                self.processed.drain_deltas();
-                self.processed.overdelete();
+            semi_naive_evaluation(
+                &mut self.processed,
+                &self.nonrecursive_delta_overdeletion_program,
+                &self.recursive_delta_overdeletion_program
+            );
+            self.processed.drain_deltas();
+            self.processed.overdelete();
 
-                semi_naive_evaluation(
-                    &mut self.processed,
-                    &self.nonrecursive_delta_rederivation_program,
-                    &self.recursive_delta_rederivation_program
-                );
-                self.processed.drain_deltas();
-                self.processed.rederive();
+            semi_naive_evaluation(
+                &mut self.processed,
+                &self.nonrecursive_delta_rederivation_program,
+                &self.recursive_delta_rederivation_program
+            );
+            self.processed.drain_deltas();
+            self.processed.rederive();
 
-                self.processed.clear_prefix(OVERDELETION_PREFIX);
-                self.processed.clear_prefix(REDERIVATION_PREFIX);
-            }
-            if !self.unprocessed_insertions.is_empty() {
-                // Additions
-                self.unprocessed_insertions
-                    .drain_all_relations()
-                    .for_each(|(relation_symbol, unprocessed_facts)| {
-                        // We dump all unprocessed EDB relations into delta EDB relations
-                        self.processed.insert_registered(
-                            &format!("{}{}", DELTA_PREFIX, relation_symbol),
-                            unprocessed_facts.clone().into_iter()
-                        );
-                        // And in their respective place
-                        self.processed.insert_registered(
-                            &relation_symbol,
-                            unprocessed_facts.into_iter()
-                        );
-                    });
+            self.processed.clear_prefix(OVERDELETION_PREFIX);
+            self.processed.clear_prefix(REDERIVATION_PREFIX);
+        }
+        if !self.unprocessed_insertions.is_empty() {
+            // Additions
+            self.unprocessed_insertions
+                .drain_all_relations()
+                .for_each(|(relation_symbol, unprocessed_facts)| {
+                    // We dump all unprocessed EDB relations into delta EDB relations
+                    self.processed.insert_registered(
+                        &format!("{}{}", DELTA_PREFIX, relation_symbol),
+                        unprocessed_facts.clone().into_iter()
+                    );
+                    // And in their respective place
+                    self.processed.insert_registered(
+                        &relation_symbol,
+                        unprocessed_facts.into_iter()
+                    );
+                });
 
-                semi_naive_evaluation(
-                    &mut self.processed,
-                    &self.nonrecursive_delta_program,
-                    &self.recursive_delta_program
-                );
+            semi_naive_evaluation(
+                &mut self.processed,
+                &self.nonrecursive_delta_program,
+                &self.recursive_delta_program
+            );
 
-                self.processed.drain_deltas();
-            }
+            self.processed.drain_deltas();
         }
     }
 
