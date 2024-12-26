@@ -23,7 +23,7 @@ pub fn semi_naive_evaluation(
     }
 }
 
-/*#[cfg(test)]
+#[cfg(test)]
 mod test {
     use crate::engine::storage::RelationStorage;
     use crate::evaluation::semi_naive::semi_naive_evaluation;
@@ -32,6 +32,7 @@ mod test {
     use datalog_rule_macro::program;
     use datalog_syntax::*;
     use std::collections::HashSet;
+    use std::sync::Arc;
 
     fn insert_into(
         storage: &mut RelationStorage,
@@ -39,7 +40,7 @@ mod test {
         facts: Vec<AnonymousGroundAtom>,
     ) {
         facts.into_iter().for_each(|fact| {
-            storage.inner.get_mut(relation_symbol).unwrap().insert(fact);
+            storage.inner.get_mut(relation_symbol).unwrap().insert(Arc::new(fact));
         });
     }
 
@@ -74,9 +75,8 @@ mod test {
         );
         let actual: HashSet<_> = storage
             .get_relation("hop")
-            .unwrap()
             .into_iter()
-            .cloned()
+            .map(|x| (**x).clone())
             .collect();
 
         assert_eq!(expected, actual);
@@ -138,9 +138,8 @@ mod test {
 
         let actual: HashSet<_> = storage
             .get_relation("tc")
-            .unwrap()
             .into_iter()
-            .cloned()
+            .map(|x| (**x).clone())
             .collect();
 
         assert_eq!(expected, actual);
@@ -201,12 +200,10 @@ mod test {
 
         let actual: HashSet<_> = storage
             .get_relation("tc")
-            .unwrap()
             .into_iter()
-            .cloned()
+            .map(|x| (**x).clone())
             .collect();
 
         assert_eq!(expected, actual);
     }
 }
-*/

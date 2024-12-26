@@ -3,8 +3,8 @@ use crate::helpers::helpers::{DELTA_PREFIX, OVERDELETION_PREFIX, REDERIVATION_PR
 use datalog_syntax::{AnonymousGroundAtom, Program};
 use indexmap::IndexSet;
 use crate::evaluation::spj_processor::RuleEvaluator;
-
-pub type FactStorage = IndexSet<AnonymousGroundAtom, ahash::RandomState>;
+use std::sync::Arc;
+pub type FactStorage = IndexSet<Arc<AnonymousGroundAtom>, ahash::RandomState>;
 #[derive(Default)]
 pub struct RelationStorage {
     pub(crate) inner: HashMap<String, FactStorage>,
@@ -14,14 +14,14 @@ impl RelationStorage {
     pub fn get_relation(&self, relation_symbol: &str) -> &FactStorage {
         return self.inner.get(relation_symbol).unwrap()
     }
-    pub fn drain_relation(&mut self, relation_symbol: &str) -> Vec<AnonymousGroundAtom> {
+    pub fn drain_relation(&mut self, relation_symbol: &str) -> Vec<Arc<AnonymousGroundAtom>> {
         let rel = self.inner.get_mut(relation_symbol).unwrap();
 
         return rel.drain(..).collect();
     }
     pub fn drain_all_relations(
         &mut self,
-    ) -> impl Iterator<Item = (String, Vec<AnonymousGroundAtom>)> + '_ {
+    ) -> impl Iterator<Item = (String, Vec<Arc<AnonymousGroundAtom>>)> + '_ {
         let relations_to_be_drained: Vec<_> =
             self.inner.iter().map(|(symbol, _)| symbol.clone()).collect();
 
@@ -135,7 +135,7 @@ impl RelationStorage {
     pub fn insert_registered(
         &mut self,
         relation_symbol: &str,
-        registrations: impl Iterator<Item = AnonymousGroundAtom>,
+        registrations: impl Iterator<Item = Arc<AnonymousGroundAtom>>,
     ) {
         let mut hashes = vec![];
 
@@ -157,7 +157,7 @@ impl RelationStorage {
     pub fn insert_all(
         &mut self,
         relation_symbol: &str,
-        facts: impl Iterator<Item = AnonymousGroundAtom>,
+        facts: impl Iterator<Item = Arc<AnonymousGroundAtom>>,
     ) {
         if let Some(relation) = self.inner.get_mut(relation_symbol) {
             relation.extend(facts.into_iter())
@@ -171,11 +171,11 @@ impl RelationStorage {
     }
     pub fn insert(&mut self, relation_symbol: &str, ground_atom: AnonymousGroundAtom) -> bool {
         if let Some(relation) = self.inner.get_mut(relation_symbol) {
-            return relation.insert(ground_atom);
+            return relation.insert(Arc::new(ground_atom));
         }
 
         let mut fresh_fact_storage = FactStorage::default();
-        fresh_fact_storage.insert(ground_atom);
+        fresh_fact_storage.insert(Arc::new(ground_atom));
 
         self.inner
             .insert(relation_symbol.to_string(), fresh_fact_storage);
@@ -211,6 +211,7 @@ impl RelationStorage {
             let diff: FactStorage = evaluation
                 .into_iter()
                 .filter(|fact| !current_delta_relation.contains(fact))
+                .map(|fact| Arc::new(fact))
                 .collect();
 
             if idx == 0 {
@@ -249,6 +250,7 @@ impl RelationStorage {
                 let diff: FactStorage = current_delta_evaluation
                     .into_iter()
                     .filter(|fact| !curr.contains(fact))
+                    .map(|fact| Arc::new(fact))
                     .collect();
 
                 if idx == 0 {

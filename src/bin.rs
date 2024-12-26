@@ -7,7 +7,6 @@ use lasso::{Key, Rodeo};
 use std::time::Instant;
 
 // TC benchmark
-/*
 crepe! {
     @input
     struct e(usize, usize);
@@ -33,7 +32,7 @@ fn main() {
         tc(?x, ?z) <- [e(?x, ?y), tc(?y, ?z)]
     };
 
-    let mut micro_runtime = microRuntime::new(program);
+    let mut micro_runtime = MicroRuntime::new(program);
     let mut ascnt_runtime = AscentProgram::default();
     let mut crepe_runtime = Crepe::new();
 
@@ -65,7 +64,7 @@ fn main() {
     println!("ascent: {} milis", now.elapsed().as_millis());
     println!("inferred tuples: {}", ascnt_runtime.tc.len());
 }
-*/
+/*
 crepe! {
     @input
     struct RDF(usize, usize, usize);
@@ -166,3 +165,4 @@ fn main() {
     println!("ascent: {} milis", now.elapsed().as_millis());
     println!("inferred tuples: {}", ascnt_runtime.T.len());
 }
+*/

@@ -12,6 +12,7 @@ use crate::program_transformations::delta_program::make_delta_program;
 use crate::program_transformations::dred::{ make_overdeletion_program, make_rederivation_program };
 use datalog_syntax::*;
 use std::collections::HashSet;
+use std::sync::Arc;
 use crate::program_transformations::dependency_graph::sort_program;
 
 pub struct MicroRuntime {
@@ -64,12 +65,13 @@ impl MicroRuntime {
         if !self.safe() {
             return Err("poll needed to obtain correct results".to_string());
         }
+
         return Ok(
             self.processed
                 .get_relation(query.symbol)
                 .iter()
                 .filter(|fact| pattern_match(query, fact))
-                .map(|fact| fact.clone())
+                .map(|fact| (**fact).clone())
         );
     }
 
