@@ -1,9 +1,8 @@
 # Micro Datalog
 
-Micro Datalog is a minimal incremental datalog reasoner. It is primarily meant to be correct, easy to use, and sort-of fast. It happens
-to be **very** fast.
+Micro Datalog is a minimal incremental datalog reasoner. It is primarily meant to be correct and easy to use.
 
-It compiles datalog rules into a sequence of relational algebra operations that are run in an efficient four-instruction
+It compiles datalog rules into a sequence of relational algebra operations that are run with an efficient four-instruction
 __select-project-join__ relational algebra interpreter.
 
 The following snippets showcase the engine in action:

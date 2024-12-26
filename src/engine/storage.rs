@@ -1,10 +1,8 @@
-use std::time::Instant;
 use ahash::HashMap;
 use crate::helpers::helpers::{DELTA_PREFIX, OVERDELETION_PREFIX, REDERIVATION_PREFIX};
 use datalog_syntax::{AnonymousGroundAtom, Program};
 use indexmap::IndexSet;
 use crate::evaluation::spj_processor::RuleEvaluator;
-use rayon::prelude::*;
 
 pub type FactStorage = IndexSet<AnonymousGroundAtom, ahash::RandomState>;
 #[derive(Default)]
@@ -26,28 +24,6 @@ impl RelationStorage {
     ) -> impl Iterator<Item = (String, Vec<AnonymousGroundAtom>)> + '_ {
         let relations_to_be_drained: Vec<_> =
             self.inner.iter().map(|(symbol, _)| symbol.clone()).collect();
-
-        relations_to_be_drained.into_iter().map(|relation_symbol| {
-            (
-                relation_symbol.clone(),
-                self.inner
-                    .get_mut(&relation_symbol)
-                    .unwrap()
-                    .drain(..)
-                    .collect::<Vec<_>>(),
-            )
-        })
-    }
-    pub fn drain_prefix_filter<'a>(
-        &'a mut self,
-        prefix: &'a str,
-    ) -> impl Iterator<Item = (String, Vec<AnonymousGroundAtom>)> + '_ {
-        let relations_to_be_drained: Vec<_> = self
-            .inner
-            .iter()
-            .map(|(symbol, _)| symbol.clone())
-            .filter(|relation_symbol| relation_symbol.starts_with(prefix))
-            .collect();
 
         relations_to_be_drained.into_iter().map(|relation_symbol| {
             (

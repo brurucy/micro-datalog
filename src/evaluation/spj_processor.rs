@@ -47,30 +47,21 @@ fn stringify_selection(selection: &Instruction) -> String {
 }
 
 fn stringify_join(join: &Instruction) -> String {
+    let equality = match join {
+        Instruction::Join(_, _, _) => "=",
+        Instruction::Antijoin(_, _, _) => "!=",
+        _ => unreachable!(),
+    };
+
     return match join {
-        Instruction::Join(left_symbol, right_symbol, join_keys) => {
+        Instruction::Join(left_symbol, right_symbol, join_keys) | Instruction::Antijoin(left_symbol, right_symbol, join_keys) => {
             let join_keys_format = join_keys
                 .iter()
-                .map(|(left_column, right_column)| format!("{}={}", left_column, right_column))
+                .map(|(left_column, right_column)| format!("{}{}{}", left_column, equality, right_column))
                 .collect::<Vec<_>>()
                 .join("_");
 
             format!("{}_{}_{}", left_symbol, right_symbol, join_keys_format)
-        }
-        _ => unreachable!(),
-    };
-}
-
-fn stringify_antijoin(antijoin: &Instruction) -> String {
-    return match antijoin {
-        Instruction::Antijoin(left_symbol, right_symbol, antijoin_keys) => {
-            let antijoin_keys_format = antijoin_keys
-                .iter()
-                .map(|(left_column, right_column)| format!("{}!={}", left_column, right_column))
-                .collect::<Vec<_>>()
-                .join("_");
-
-            format!("{}_{}_{}", left_symbol, right_symbol, antijoin_keys_format)
         }
         _ => unreachable!(),
     };
@@ -106,8 +97,8 @@ fn get_selection(symbol: &str, sign: &bool, terms: &Vec<Term>) -> Option<Instruc
 
 fn get_variables(terms: &Vec<Term>) -> HashMap<Variable, usize> {
     terms
-        .clone()
         .into_iter()
+        .cloned()
         .enumerate()
         .filter(|(_, term)| {
             match term {
@@ -128,7 +119,8 @@ fn get_join(
     left_terms: &Vec<Term>,
     right_terms: &Vec<Term>,
     left_symbol: &str,
-    right_symbol: &str
+    right_symbol: &str,
+    anti: bool
 ) -> Option<Instruction> {
     let left_variable_map = get_variables(left_terms);
     let right_variable_map = get_variables(right_terms);
@@ -142,31 +134,11 @@ fn get_join(
     }
 
     if !join_keys.is_empty() {
-        return Some(Join(left_symbol.to_string(), right_symbol.to_string(), join_keys));
-    }
-
-    return None;
-}
-
-fn get_antijoin(
-    left_terms: &Vec<Term>,
-    right_terms: &Vec<Term>,
-    left_symbol: &str,
-    right_symbol: &str
-) -> Option<Instruction> {
-    let left_variable_map = get_variables(left_terms);
-    let right_variable_map = get_variables(right_terms);
-
-    let mut antijoin_keys = vec![];
-
-    for (variable_name, left_position) in left_variable_map {
-        if let Some(right_position) = right_variable_map.get(&variable_name) {
-            antijoin_keys.push((left_position, *right_position));
+        return if anti {
+            Some(Antijoin(left_symbol.to_string(), right_symbol.to_string(), join_keys))
+        } else {
+            Some(Join(left_symbol.to_string(), right_symbol.to_string(), join_keys))
         }
-    }
-
-    if !antijoin_keys.is_empty() {
-        return Some(Antijoin(left_symbol.to_string(), right_symbol.to_string(), antijoin_keys));
     }
 
     return None;
@@ -243,18 +215,16 @@ impl From<Rule> for Stack {
         let mut body_iter = rule.body.iter().peekable();
         let mut last_join_result_name = None;
         let mut last_join_terms: Vec<Term> = vec![];
-        let mut last_antijoin_result_name = None;
-        let mut last_antijoin_terms: Vec<Term> = vec![];
         while let Some(current_atom) = body_iter.next() {
             if let Some(next_atom) = body_iter.peek() {
                 let mut left_symbol = current_atom.symbol.clone();
                 let mut left_terms = current_atom.terms.clone();
-                let mut left_sign = current_atom.sign.clone();
+                let left_sign = current_atom.sign.clone();
                 let mut right_symbol = next_atom.symbol.clone();
-                let mut right_sign = next_atom.sign.clone();
+                let right_sign = next_atom.sign.clone();
                 let right_terms = &next_atom.terms;
 
-                if last_join_result_name.is_none() && last_antijoin_result_name.is_none() {
+                if last_join_result_name.is_none() {
                     if
                         let Some(selection) = get_selection(
                             &left_symbol,
@@ -267,12 +237,7 @@ impl From<Rule> for Stack {
                     } else {
                         operations.push(Instruction::Move(left_symbol.clone()));
                     }
-                } else if let Some(_) = last_antijoin_result_name {
-                    // If there was a previous antijoin, use the antijoin result name and terms
-                    left_symbol = last_antijoin_result_name.clone().unwrap();
-                    left_terms = last_antijoin_terms.clone();
                 } else if let Some(_) = last_join_result_name {
-                    // If there was a previous join, use the join result name and terms
                     left_symbol = last_join_result_name.clone().unwrap();
                     left_terms = last_join_terms.clone();
                 }
@@ -284,44 +249,19 @@ impl From<Rule> for Stack {
                     operations.push(Instruction::Move(right_symbol.clone()));
                 }
 
-                if left_sign && right_sign {
-                    if
-                        let Some(binary_join) = get_join(
-                            &left_terms,
-                            right_terms,
-                            &left_symbol,
-                            &right_symbol
-                        )
-                    {
-                        last_join_result_name = Some(stringify_join(&binary_join));
-                        last_join_terms = left_terms.clone();
-                        last_join_terms.extend(right_terms.clone());
-
-                        // Reset the antijoin since a join is happening
-                        last_antijoin_result_name = None;
-                        last_antijoin_terms.clear();
-
-                        operations.push(binary_join);
-                    }
-                } else {
-                    if
-                        let Some(antijoin) = get_antijoin(
-                            &left_terms,
-                            right_terms,
-                            &left_symbol,
-                            &right_symbol
-                        )
-                    {
-                        last_antijoin_result_name = Some(stringify_antijoin(&antijoin));
-                        last_antijoin_terms = left_terms.clone();
-                        last_antijoin_terms.extend(right_terms.clone());
-
-                        // Reset the join since an antijoin is happening
-                        last_join_result_name = None;
-                        last_join_terms.clear();
-
-                        operations.push(antijoin);
-                    }
+                let is_anti_join = !left_sign || !right_sign;
+                if let Some(binary_join) = get_join(
+                    &left_terms,
+                    right_terms,
+                    &left_symbol,
+                    &right_symbol,
+                    is_anti_join
+                ) {
+                    last_join_result_name = Some(stringify_join(&binary_join));
+                    last_join_terms = left_terms.clone();
+                    last_join_terms.extend(right_terms.clone());
+        
+                    operations.push(binary_join);
                 }
             } else {
                 if operations.is_empty() {
@@ -333,12 +273,6 @@ impl From<Rule> for Stack {
                 operations.push(projection);
             }
         }
-
-        /*println!("Rule: {:?}", &rule);
-        println!("CallStack:");
-        for operation in &operations {
-            println!("\t{:?}", operation);
-        }*/
 
         Stack { inner: operations }
     }
@@ -376,7 +310,6 @@ impl<'a> RuleEvaluator<'a> {
                         relation_symbol_to_be_projected = symbol.clone();
                     }
                     let moved = out.inner.get(symbol).is_some();
-                    // If it has already been moved, then this is a NOOP
                     if !moved {
                         let fact_refs = self.facts_storage.get_relation(symbol);
 
@@ -411,8 +344,7 @@ impl<'a> RuleEvaluator<'a> {
                     }
                 }
 
-                Instruction::Join(left_symbol, right_symbol, join_keys) => {
-                    let now = Instant::now();
+                Instruction::Join(left_symbol, right_symbol, join_keys) | Instruction::Antijoin(left_symbol, right_symbol, join_keys) => {
                     let left_relation = out.get_relation(&left_symbol);
                     let right_relation = out.get_relation(&right_symbol);
                     let join_result_name = stringify_join(operation);
@@ -420,7 +352,7 @@ impl<'a> RuleEvaluator<'a> {
                         relation_symbol_to_be_projected = join_result_name.clone();
                     }
 
-                    let mut join_result = boxcar::vec![];
+                    let join_result = boxcar::vec![];
 
                     left_relation.into_par_iter().for_each(|left_allocation| {
                         let is_left_product = match left_allocation {
@@ -506,94 +438,6 @@ impl<'a> RuleEvaluator<'a> {
                     });
 
                     out.borrow_all(&join_result_name, join_result.into_iter());
-                }
-
-                Instruction::Antijoin(left_symbol, right_symbol, antijoin_keys) => {
-                    let now = Instant::now();
-                    let left_relation = out.get_relation(&left_symbol);
-                    let right_relation = out.get_relation(&right_symbol);
-                    let antijoin_result_name = stringify_antijoin(operation);
-                    if idx == penultimate_operation {
-                        relation_symbol_to_be_projected = antijoin_result_name.clone();
-                    }
-
-                    let mut antijoin_result = boxcar::vec![];
-
-                    left_relation.into_par_iter().for_each(|left_allocation| {
-                        let is_left_product = match left_allocation {
-                            EphemeralValue::FactRef(_) => false,
-                            EphemeralValue::JoinResult(_) => true,
-                        };
-
-                        // Variables to handle cases when left_allocation is a product of previous joins
-                        let mut antijoin_key_positions = None;
-                        if is_left_product {
-                            antijoin_key_positions = Some(
-                                antijoin_keys.iter().map(|(left_column, right_column)| {
-                                    let mut cumsum = 0;
-
-                                    let arities = (
-                                        {
-                                            match left_allocation {
-                                                EphemeralValue::JoinResult(product) => product,
-                                                _ => unreachable!(),
-                                            }
-                                        }
-                                    )
-                                        .iter()
-                                        .map(|fact| fact.len());
-
-                                    let mut left_idx = 0;
-
-                                    for (idx, arity) in arities.enumerate() {
-                                        cumsum += arity;
-
-                                        if *left_column < cumsum {
-                                            left_idx = idx;
-                                            break;
-                                        }
-                                    }
-
-                                    ((left_idx, cumsum - left_column), right_column)
-                                })
-                            );
-                        }
-
-                        // Check the antijoin condition: no matching keys in the right relation
-                        let has_match = right_relation.iter().any(|right_allocation| {
-                            let right_fact = match right_allocation {
-                                EphemeralValue::FactRef(fact) => fact,
-                                EphemeralValue::JoinResult(_) => unreachable!(),
-                            };
-
-                            match left_allocation {
-                                EphemeralValue::FactRef(left_fact) => {
-                                    antijoin_keys
-                                        .iter()
-                                        .all(|(left_column, right_column)| {
-                                            left_fact[*left_column] == right_fact[*right_column]
-                                        })
-                                }
-                                EphemeralValue::JoinResult(product) => {
-                                    antijoin_key_positions
-                                        .clone()
-                                        .unwrap()
-                                        .into_iter()
-                                        .all(|((left_fact_idx, left_column), right_column)| {
-                                            product[left_fact_idx][left_column] ==
-                                                right_fact[*right_column]
-                                        })
-                                }
-                            }
-                        });
-
-                        // If no match was found, add the left relation element to the antijoin result
-                        if !has_match {
-                            antijoin_result.push(left_allocation.clone());
-                        }
-                    });
-
-                    out.borrow_all(&antijoin_result_name, antijoin_result.into_iter());
                 }
 
                 Instruction::Project(_symbol, projection_inputs) => {

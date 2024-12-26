@@ -1,4 +1,4 @@
-use ahash::{HashMap};
+use ahash::HashMap;
 use datalog_syntax::AnonymousGroundAtom;
 
 #[derive(Clone, Hash, Eq, PartialEq)]

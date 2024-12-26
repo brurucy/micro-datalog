@@ -14,7 +14,6 @@ use datalog_syntax::*;
 use std::collections::HashSet;
 use crate::program_transformations::dependency_graph::sort_program;
 
-// Hairy
 pub struct MicroRuntime {
     processed: RelationStorage,
     unprocessed_insertions: RelationStorage,
