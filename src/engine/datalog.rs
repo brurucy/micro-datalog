@@ -188,9 +188,7 @@ impl MicroRuntime {
             processed.inner.entry(relation_symbol.to_string()).or_default();
         });
 
-        let (nonrecursive_delta_program, recursive_delta_program) = split_program(
-            make_delta_program(&program, true)
-        );
+        let (nonrecursive_delta_program, recursive_delta_program) = split_program(program.clone());
 
         let overdeletion_program = make_delta_program(&make_overdeletion_program(&program), false);
         let (nonrecursive_delta_overdeletion_program, recursive_delta_overdeletion_program) =

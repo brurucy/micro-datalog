@@ -4,6 +4,8 @@ use datalog_syntax::{AnonymousGroundAtom, Program};
 use indexmap::IndexSet;
 use crate::evaluation::spj_processor::RuleEvaluator;
 use std::sync::Arc;
+
+use super::index_storage::IndexStorage;
 pub type FactStorage = IndexSet<Arc<AnonymousGroundAtom>, ahash::RandomState>;
 #[derive(Default)]
 pub struct RelationStorage {
@@ -198,37 +200,29 @@ impl RelationStorage {
     }
 
     // Nonrecursive materialisation can be done sequentially in one pass.
-    pub fn materialize_nonrecursive_delta_program(&mut self, nonrecursive_program: &Program) {
-        for (idx, rule) in nonrecursive_program.inner.iter().enumerate() {
+    pub fn materialize_nonrecursive_delta_program<'a>(&mut self, nonrecursive_program: &Program, index_storage: &mut IndexStorage) {
+        for (_idx, rule) in nonrecursive_program.inner.iter().enumerate() {
             let evaluator = RuleEvaluator::new(self, rule);
 
-            let evaluation = evaluator.step();
+            let evaluation = evaluator.step(index_storage);
 
             let delta_relation_symbol = rule.head.symbol.clone();
 
-            let current_delta_relation = self.get_relation(&delta_relation_symbol);
+            let current_relation = self.get_relation(&delta_relation_symbol);
 
             let diff: FactStorage = evaluation
                 .into_iter()
-                .filter(|fact| !current_delta_relation.contains(fact))
+                .filter(|fact| !current_relation.contains(fact))
                 .map(|fact| Arc::new(fact))
                 .collect();
 
-            if idx == 0 {
-                (*self.inner.get_mut(&delta_relation_symbol).unwrap()) = diff.clone();
-            } else {
-                self.insert_all(&delta_relation_symbol, diff.clone().into_iter());
-            }
-
-            let relation_symbol = delta_relation_symbol.clone();
-            relation_symbol.strip_prefix(DELTA_PREFIX).unwrap();
-            self.insert_all(
-                delta_relation_symbol.strip_prefix(DELTA_PREFIX).unwrap(),
-                diff.into_iter(),
-            );
+            self.insert_all(&delta_relation_symbol, diff.clone().into_iter());
+            index_storage.borrow_all(&delta_relation_symbol, diff.into_iter().map(|x| super::index_storage::EphemeralValue::FactRef((x))));
         }
+
+        index_storage.inner.extend(index_storage.diff.drain());
     }
-    pub fn materialize_recursive_delta_program(&mut self, recursive_program: &Program) {
+    pub fn materialize_recursive_delta_program<'a>(&mut self, recursive_program: &Program, index_storage: &mut IndexStorage) {
         let evaluation_setup: Vec<_> = recursive_program
             .inner
             .iter()
@@ -238,13 +232,13 @@ impl RelationStorage {
         let evaluation = evaluation_setup
             .into_iter()
             .map(|(delta_relation_symbol, rule)| {
-                let out = rule.step().collect::<Vec<_>>();
+                let out = rule.step(index_storage).collect::<Vec<_>>();
                 (delta_relation_symbol, out)
             })
             .collect::<Vec<_>>();
 
         evaluation.into_iter().enumerate().for_each(
-            |(idx, (delta_relation_symbol, current_delta_evaluation))| {
+            |(_idx, (delta_relation_symbol, current_delta_evaluation))| {
                 let curr = self.get_relation(delta_relation_symbol);
 
                 let diff: FactStorage = current_delta_evaluation
@@ -253,20 +247,12 @@ impl RelationStorage {
                     .map(|fact| Arc::new(fact))
                     .collect();
 
-                if idx == 0 {
-                    (*self.inner.get_mut(delta_relation_symbol).unwrap()) = diff.clone();
-                } else {
-                    self.insert_all(delta_relation_symbol, diff.clone().into_iter());
-                }
-
-                let relation_symbol = delta_relation_symbol.clone();
-                relation_symbol.strip_prefix(DELTA_PREFIX).unwrap();
-                self.insert_all(
-                    delta_relation_symbol.strip_prefix(DELTA_PREFIX).unwrap(),
-                    diff.into_iter(),
-                );
+                self.insert_all(delta_relation_symbol, diff.clone().into_iter());
+                index_storage.borrow_all(&delta_relation_symbol, diff.into_iter().map(|x| super::index_storage::EphemeralValue::FactRef(x)));
             },
         );
+
+        index_storage.inner.extend(index_storage.diff.drain());
     }
 
 

@@ -1,4 +1,6 @@
-use crate::engine::ephemeral_storage::{ IndexStorage, EphemeralValue };
+use std::sync::Arc;
+
+use crate::engine::index_storage::{ IndexStorage, EphemeralValue };
 use crate::engine::storage::RelationStorage;
 use ahash::{ HashMap, HashSet };
 use datalog_syntax::{ AnonymousGroundAtom, Rule, Term, TypedValue, Variable };
@@ -289,13 +291,111 @@ impl<'a> RuleEvaluator<'a> {
     }
 }
 
+fn do_join(penultimate_operation: usize, relation_symbol_to_be_projected: &mut String, idx: usize, join_keys: &Vec<(usize, usize)>, left_relation: &Vec<EphemeralValue>, right_relation: &Vec<EphemeralValue>, join_result_name: &String) -> Vec<EphemeralValue> {
+    if idx == penultimate_operation {
+        *relation_symbol_to_be_projected = join_result_name.clone();
+    }
+
+    let mut join_result = vec![];
+    let is_left_product = { 
+        if let Some(left_allocation) = left_relation.get(0) {
+            match left_allocation {
+                EphemeralValue::FactRef(_) => false,
+                EphemeralValue::JoinResult(_) => {
+                    true
+                },
+            }
+        } else {
+            false
+        }
+    };
+
+    left_relation.into_iter().for_each(|left_allocation| {
+        let mut join_key_positions = None;
+        if is_left_product {
+            join_key_positions = Some(
+                join_keys.iter().map(|(left_column, right_column)| {
+                    let mut cumsum = 0;
+
+                    let arities = (
+                        {
+                            match left_allocation {
+                                EphemeralValue::JoinResult(product) => product,
+                                _ => unreachable!(),
+                            }
+                        }
+                    )
+                        .iter()
+                        .map(|fact| fact.len());
+
+                    let mut left_idx = 0;
+
+                    for (idx, arity) in arities.enumerate() {
+                        cumsum += arity;
+
+                        if *left_column < cumsum {
+                            left_idx = idx;
+                            break;
+                        }
+                    }
+
+                    ((left_idx, cumsum - left_column), right_column)
+                })
+            );
+        }
+                
+        right_relation.into_iter().for_each(|right_allocation| {
+            let right_fact = match right_allocation {
+                EphemeralValue::FactRef(fact) => fact,
+                EphemeralValue::JoinResult(_) => unreachable!(),
+            };
+
+            match left_allocation {
+                EphemeralValue::FactRef(left_fact) => {
+                    if
+                        join_keys
+                            .iter()
+                            .all(|(left_column, right_column)| {
+                                left_fact[*left_column] == right_fact[*right_column]
+                            })
+                    {
+                        {
+                            join_result.push(
+                                EphemeralValue::JoinResult(
+                                    vec![left_fact.clone(), right_fact.clone()]
+                                )
+                            );
+                        }
+                    }
+                }
+                EphemeralValue::JoinResult(product) => {
+                    if
+                        join_key_positions
+                            .clone()
+                            .unwrap()
+                            .into_iter()
+                            .all(|((left_fact_idx, left_column), right_column)| {
+                                product[left_fact_idx][left_column] ==
+                                    right_fact[*right_column]
+                            })
+                    {
+                        let mut new_product = product.clone();
+                        new_product.push(right_fact.clone());
+
+                        join_result.push(EphemeralValue::JoinResult(new_product));
+                    }
+                }
+            }
+        })
+    });
+    join_result
+}
+
 impl<'a> RuleEvaluator<'a> {
-    pub fn step(&self) -> impl Iterator<Item = AnonymousGroundAtom> + 'a {
+    pub fn step(&self, index_storage: &mut IndexStorage) -> impl Iterator<Item = AnonymousGroundAtom> + 'a {
         let stack = Stack::from(self.rule.clone());
 
-        let mut out = IndexStorage::default();
-
-        // There will always be at least two elements in the stack. Move or Select and then Projection.
+        // There will always be at least two elements on the stack. Move or Select, and then Projection.
         let penultimate_operation = stack.inner.len() - 2;
         let mut relation_symbol_to_be_projected = self.rule.head.symbol.clone();
         let mut grounded_facts: Vec<AnonymousGroundAtom> = vec![];
@@ -306,13 +406,13 @@ impl<'a> RuleEvaluator<'a> {
                     if idx == penultimate_operation {
                         relation_symbol_to_be_projected = symbol.clone();
                     }
-                    let moved = out.inner.get(symbol).is_some();
+                    let moved = index_storage.diff.get(symbol).is_some();
                     if !moved {
                         let fact_refs = self.facts_storage.get_relation(symbol);
 
-                        out.borrow_all(
+                        index_storage.borrow_all(
                             symbol,
-                            fact_refs.into_iter().map(|fact| EphemeralValue::FactRef(fact))
+                            fact_refs.into_iter().map(|fact| EphemeralValue::FactRef(fact.clone()))
                         );
                     }
                 }
@@ -322,7 +422,7 @@ impl<'a> RuleEvaluator<'a> {
                         relation_symbol_to_be_projected = index_name.clone();
                     }
                     // If the index already exists, then this is a NOOP.
-                    if out.inner.get(&index_name).is_none() {
+                    if index_storage.diff.get(&index_name).is_none() {
                         let target_relation = self.facts_storage.get_relation(symbol);
 
                         // Apply the selection based on the `sign`
@@ -335,127 +435,40 @@ impl<'a> RuleEvaluator<'a> {
                                     fact[*column] != *value // Negated selection: column != value
                                 }
                             })
-                            .map(|fact| EphemeralValue::FactRef(fact));
+                            .map(|fact| EphemeralValue::FactRef(fact.clone()));
 
-                        out.borrow_all(&index_name, selection);
+                        index_storage.borrow_all(&index_name, selection);
                     }
                 }
 
                 Instruction::Join(left_symbol, right_symbol, join_keys) | Instruction::Antijoin(left_symbol, right_symbol, join_keys) => {
-                    let left_relation = out.get_relation(&left_symbol);
-                    let right_relation = out.get_relation(&right_symbol);
+                    let left = index_storage.get_relation(&left_symbol);
+                    let right = index_storage.get_relation(&right_symbol);
+                    let left_delta = index_storage.get_relation_delta(&left_symbol);
+                    let right_delta = index_storage.get_relation_delta(&right_symbol);
+
                     let join_result_name = stringify_join(operation);
-                    if idx == penultimate_operation {
-                        relation_symbol_to_be_projected = join_result_name.clone();
-                    }
+                    let left_right_delta = do_join(penultimate_operation, &mut relation_symbol_to_be_projected, idx, join_keys, left, right_delta, &join_result_name);
+                    let right_left_delta = do_join(penultimate_operation, &mut relation_symbol_to_be_projected, idx, join_keys, left_delta, right, &join_result_name);
+                    let left_delta_right_delta = do_join(penultimate_operation, &mut relation_symbol_to_be_projected, idx, join_keys, left_delta, right_delta, &join_result_name);
 
-                    let mut join_result = vec![];
-                    let is_left_product = { 
-                        if let Some(left_allocation) = left_relation.get(0) {
-                            match left_allocation {
-                                EphemeralValue::FactRef(_) => false,
-                                EphemeralValue::JoinResult(_) => true,
-                            }
-                        } else {
-                            false
-                        }
-                    };
-
-                    left_relation.into_iter().for_each(|left_allocation| {
-                        let mut join_key_positions = None;
-                        if is_left_product {
-                            join_key_positions = Some(
-                                join_keys.iter().map(|(left_column, right_column)| {
-                                    let mut cumsum = 0;
-
-                                    let arities = (
-                                        {
-                                            match left_allocation {
-                                                EphemeralValue::JoinResult(product) => product,
-                                                _ => unreachable!(),
-                                            }
-                                        }
-                                    )
-                                        .iter()
-                                        .map(|fact| fact.len());
-
-                                    let mut left_idx = 0;
-
-                                    for (idx, arity) in arities.enumerate() {
-                                        cumsum += arity;
-
-                                        if *left_column < cumsum {
-                                            left_idx = idx;
-                                            break;
-                                        }
-                                    }
-
-                                    ((left_idx, cumsum - left_column), right_column)
-                                })
-                            );
-                        }
-                
-                        right_relation.into_iter().for_each(|right_allocation| {
-                            let right_fact = match right_allocation {
-                                EphemeralValue::FactRef(fact) => fact,
-                                EphemeralValue::JoinResult(_) => unreachable!(),
-                            };
-
-                            match left_allocation {
-                                EphemeralValue::FactRef(left_fact) => {
-                                    if
-                                        join_keys
-                                            .iter()
-                                            .all(|(left_column, right_column)| {
-                                                left_fact[*left_column] == right_fact[*right_column]
-                                            })
-                                    {
-                                        {
-                                            join_result.push(
-                                                EphemeralValue::JoinResult(
-                                                    vec![left_fact, right_fact]
-                                                )
-                                            );
-                                        }
-                                    }
-                                }
-                                EphemeralValue::JoinResult(product) => {
-                                    if
-                                        join_key_positions
-                                            .clone()
-                                            .unwrap()
-                                            .into_iter()
-                                            .all(|((left_fact_idx, left_column), right_column)| {
-                                                product[left_fact_idx][left_column] ==
-                                                    right_fact[*right_column]
-                                            })
-                                    {
-                                        let mut new_product = product.clone();
-                                        new_product.push(right_fact);
-
-                                        join_result.push(EphemeralValue::JoinResult(new_product));
-                                    }
-                                }
-                            }
-                        })
-                    });
-
-                    out.borrow_all(&join_result_name, join_result.into_iter());
+                    index_storage.borrow_all(&join_result_name, left_right_delta.into_iter());
+                    index_storage.borrow_all(&join_result_name, right_left_delta.into_iter());
+                    index_storage.borrow_all(&join_result_name, left_delta_right_delta.into_iter());
                 }
 
                 Instruction::Project(_symbol, projection_inputs) => {
-                    let ephemeral_relation_to_be_projected = out.inner
+                    let ephemeral_relation_to_be_projected = index_storage.diff
                         .remove(relation_symbol_to_be_projected.as_str())
                         .unwrap();
                     ephemeral_relation_to_be_projected.into_iter().for_each(|allocation| {
                         let fact = match allocation {
                             EphemeralValue::FactRef(fact) => fact.clone(),
                             EphemeralValue::JoinResult(facts) => {
-                                facts
+                                Arc::new(facts
                                     .into_iter()
-                                    .flat_map(|fact| fact)
-                                    .cloned()
-                                    .collect()
+                                    .flat_map(|fact| fact.iter().cloned().collect::<Vec<_>>())
+                                    .collect())
                             }
                         };
                         let mut projection = vec![];
@@ -478,6 +491,7 @@ impl<'a> RuleEvaluator<'a> {
         grounded_facts.into_iter()
     }
 }
+
 
 #[cfg(test)]
 mod test {

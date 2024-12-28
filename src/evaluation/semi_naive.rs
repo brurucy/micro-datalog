@@ -1,4 +1,4 @@
-use crate::engine::storage::RelationStorage;
+use crate::engine::{index_storage::IndexStorage, storage::RelationStorage};
 use datalog_syntax::Program;
 
 pub fn semi_naive_evaluation(
@@ -6,13 +6,13 @@ pub fn semi_naive_evaluation(
     nonrecursive_delta_program: &Program,
     recursive_delta_program: &Program,
 ) {
-    relation_storage.materialize_nonrecursive_delta_program(&nonrecursive_delta_program);
+    let mut index_storage = IndexStorage::default();
+    relation_storage.materialize_nonrecursive_delta_program(&nonrecursive_delta_program, &mut index_storage);
 
     loop {
         let previous_non_delta_fact_count = relation_storage.len();
 
-        relation_storage.materialize_recursive_delta_program(&recursive_delta_program);
-
+        relation_storage.materialize_recursive_delta_program(&recursive_delta_program, &mut index_storage);
         let current_non_delta_fact_count = relation_storage.len();
 
         let new_fact_count = current_non_delta_fact_count - previous_non_delta_fact_count;
