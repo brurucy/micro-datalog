@@ -4,11 +4,9 @@ use crate::evaluation::semi_naive::semi_naive_evaluation;
 use crate::helpers::helpers::{
     add_prefix,
     split_program,
-    DELTA_PREFIX,
     OVERDELETION_PREFIX,
     REDERIVATION_PREFIX,
 };
-use crate::program_transformations::delta_program::make_delta_program;
 use crate::program_transformations::dred::{ make_overdeletion_program, make_rederivation_program };
 use datalog_syntax::*;
 use std::collections::HashSet;
@@ -19,12 +17,12 @@ pub struct MicroRuntime {
     unprocessed_insertions: RelationStorage,
     unprocessed_deletions: RelationStorage,
     program: Program,
-    nonrecursive_delta_program: Program,
-    recursive_delta_program: Program,
-    nonrecursive_delta_overdeletion_program: Program,
-    recursive_delta_overdeletion_program: Program,
-    nonrecursive_delta_rederivation_program: Program,
-    recursive_delta_rederivation_program: Program,
+    nonrecursive_program: Program,
+    recursive_program: Program,
+    nonrecursive_overdeletion_program: Program,
+    recursive_overdeletion_program: Program,
+    nonrecursive_rederivation_program: Program,
+    recursive_rederivation_program: Program,
 }
 
 impl MicroRuntime {
@@ -90,16 +88,16 @@ impl MicroRuntime {
 
             semi_naive_evaluation(
                 &mut self.processed,
-                &self.nonrecursive_delta_overdeletion_program,
-                &self.recursive_delta_overdeletion_program
+                &self.nonrecursive_overdeletion_program,
+                &self.recursive_overdeletion_program
             );
             self.processed.drain_deltas();
             self.processed.overdelete();
 
             semi_naive_evaluation(
                 &mut self.processed,
-                &self.nonrecursive_delta_rederivation_program,
-                &self.recursive_delta_rederivation_program
+                &self.nonrecursive_rederivation_program,
+                &self.recursive_rederivation_program
             );
             self.processed.drain_deltas();
             self.processed.rederive();
@@ -112,11 +110,6 @@ impl MicroRuntime {
             self.unprocessed_insertions
                 .drain_all_relations()
                 .for_each(|(relation_symbol, unprocessed_facts)| {
-                    // We dump all unprocessed EDB relations into delta EDB relations
-                    self.processed.insert_registered(
-                        &format!("{}{}", DELTA_PREFIX, relation_symbol),
-                        unprocessed_facts.clone().into_iter()
-                    );
                     // And in their respective place
                     self.processed.insert_registered(
                         &relation_symbol,
@@ -126,8 +119,8 @@ impl MicroRuntime {
 
             semi_naive_evaluation(
                 &mut self.processed,
-                &self.nonrecursive_delta_program,
-                &self.recursive_delta_program
+                &self.nonrecursive_program,
+                &self.recursive_program
             );
 
             self.processed.drain_deltas();
@@ -140,30 +133,17 @@ impl MicroRuntime {
         let mut unprocessed_deletions: RelationStorage = Default::default();
 
         let mut relations = HashSet::new();
-        let mut delta_relations = HashSet::new();
         let mut overdeletion_relations = HashSet::new();
         let mut rederive_relations = HashSet::new();
 
         program.inner.iter().for_each(|rule| {
             relations.insert(&rule.head.symbol);
-            delta_relations.insert(format!("{}{}", DELTA_PREFIX, rule.head.symbol));
             overdeletion_relations.insert(format!("{}{}", OVERDELETION_PREFIX, rule.head.symbol));
-            overdeletion_relations.insert(
-                format!("{}{}{}", DELTA_PREFIX, OVERDELETION_PREFIX, rule.head.symbol)
-            );
             rederive_relations.insert(format!("{}{}", REDERIVATION_PREFIX, rule.head.symbol));
-            rederive_relations.insert(
-                format!("{}{}{}", DELTA_PREFIX, REDERIVATION_PREFIX, rule.head.symbol)
-            );
-
             rule.body.iter().for_each(|body_atom| {
                 relations.insert(&body_atom.symbol);
-                delta_relations.insert(format!("{}{}", DELTA_PREFIX, body_atom.symbol));
                 overdeletion_relations.insert(
                     format!("{}{}", OVERDELETION_PREFIX, body_atom.symbol)
-                );
-                overdeletion_relations.insert(
-                    format!("{}{}{}", DELTA_PREFIX, OVERDELETION_PREFIX, body_atom.symbol)
                 );
             })
         });
@@ -176,10 +156,6 @@ impl MicroRuntime {
             unprocessed_deletions.inner.entry(relation_symbol.to_string()).or_default();
         });
 
-        delta_relations.iter().for_each(|relation_symbol| {
-            processed.inner.entry(relation_symbol.to_string()).or_default();
-        });
-
         overdeletion_relations.iter().for_each(|relation_symbol| {
             processed.inner.entry(relation_symbol.to_string()).or_default();
         });
@@ -188,22 +164,22 @@ impl MicroRuntime {
             processed.inner.entry(relation_symbol.to_string()).or_default();
         });
 
-        let (nonrecursive_delta_program, recursive_delta_program) = split_program(program.clone());
+        let (nonrecursive_program, recursive_program) = split_program(program.clone());
 
-        let overdeletion_program = make_delta_program(&make_overdeletion_program(&program), false);
-        let (nonrecursive_delta_overdeletion_program, recursive_delta_overdeletion_program) =
+        let overdeletion_program = make_overdeletion_program(&program);
+        let (nonrecursive_overdeletion_program, recursive_overdeletion_program) =
             split_program(overdeletion_program);
 
-        let rederivation_program = make_delta_program(&make_rederivation_program(&program), false);
-        let (nonrecursive_delta_rederivation_program, recursive_delta_rederivation_program) =
+        let rederivation_program = make_rederivation_program(&program);
+        let (nonrecursive_rederivation_program, recursive_rederivation_program) =
             split_program(rederivation_program);
 
-        let nonrecursive_delta_program = sort_program(&nonrecursive_delta_program);
-        let nonrecursive_delta_overdeletion_program = sort_program(
-            &nonrecursive_delta_overdeletion_program
+        let nonrecursive_program = sort_program(&nonrecursive_program);
+        let nonrecursive_overdeletion_program = sort_program(
+            &nonrecursive_overdeletion_program
         );
-        let nonrecursive_delta_rederivation_program = sort_program(
-            &nonrecursive_delta_rederivation_program
+        let nonrecursive_rederivation_program = sort_program(
+            &nonrecursive_rederivation_program
         );
 
         Self {
@@ -211,12 +187,12 @@ impl MicroRuntime {
             unprocessed_insertions,
             unprocessed_deletions,
             program,
-            nonrecursive_delta_program,
-            recursive_delta_program,
-            nonrecursive_delta_overdeletion_program,
-            recursive_delta_overdeletion_program,
-            nonrecursive_delta_rederivation_program,
-            recursive_delta_rederivation_program,
+            nonrecursive_program,
+            recursive_program,
+            nonrecursive_overdeletion_program,
+            recursive_overdeletion_program,
+            nonrecursive_rederivation_program,
+            recursive_rederivation_program,
         }
     }
     pub fn safe(&self) -> bool {

@@ -36,7 +36,7 @@ fn main() {
     let mut ascnt_runtime = AscentProgram::default();
     let mut crepe_runtime = Crepe::new();
 
-    let data = include_str!("../data/graph_sparse.txt");
+    let data = include_str!("../data/graph_dense.txt");
     data.lines().into_iter().for_each(|line| {
         let triple: Vec<_> = line.split(" ").collect();
         let from: usize = triple[0].parse().unwrap();
