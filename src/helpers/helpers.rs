@@ -1,15 +1,10 @@
 use datalog_syntax::Program;
 
-pub const DELTA_PREFIX: &str = "Δ";
 pub const OVERDELETION_PREFIX: &str = "delete_";
 pub const REDERIVATION_PREFIX: &str = "rederive_";
 
 pub fn add_prefix(symbol: &mut String, prefix: &str) {
     *symbol = format!("{}{}", prefix, symbol);
-}
-
-pub fn strip_prefix(symbol: &mut String, prefix: &str) {
-    *symbol = symbol.strip_prefix(prefix).unwrap().to_string();
 }
 
 pub fn split_program(program: Program) -> (Program, Program) {

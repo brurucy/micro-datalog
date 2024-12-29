@@ -1,5 +1,5 @@
 use crate::evaluation::spj_processor::RuleEvaluator;
-use crate::helpers::helpers::{DELTA_PREFIX, OVERDELETION_PREFIX, REDERIVATION_PREFIX};
+use crate::helpers::helpers::{OVERDELETION_PREFIX, REDERIVATION_PREFIX};
 use ahash::{HashMap, HashMapExt};
 use datalog_syntax::{AnonymousGroundAtom, Program};
 use indexmap::IndexSet;
@@ -260,7 +260,6 @@ impl RelationStorage {
         return self
             .inner
             .iter()
-            .filter(|(symbol, _facts)| !symbol.starts_with(DELTA_PREFIX))
             .map(|(_symbol, facts)| facts.len())
             .sum();
     }

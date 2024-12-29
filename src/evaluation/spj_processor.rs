@@ -28,7 +28,7 @@ enum Instruction {
 }
 
 #[derive(PartialEq, Debug, Clone)]
-struct Stack {
+pub struct Stack {
     inner: Vec<Instruction>,
 }
 
@@ -295,53 +295,15 @@ fn do_join(
     left_relation: &Vec<EphemeralValue>,
     right_relation: &Vec<EphemeralValue>,
     join_result_name: &String,
+    join_key_positions: Option<&Vec<((usize, usize), usize)>>,
 ) -> Vec<EphemeralValue> {
     if idx == penultimate_operation {
         *relation_symbol_to_be_projected = join_result_name.clone();
     }
 
     let mut join_result = vec![];
-    let is_left_product = {
-        if let Some(left_allocation) = left_relation.get(0) {
-            match left_allocation {
-                EphemeralValue::FactRef(_) => false,
-                EphemeralValue::JoinResult(_) => true,
-            }
-        } else {
-            false
-        }
-    };
 
     left_relation.into_iter().for_each(|left_allocation| {
-        let mut join_key_positions = None;
-        if is_left_product {
-            join_key_positions = Some(join_keys.iter().map(|(left_column, right_column)| {
-                let mut cumsum = 0;
-
-                let arities = ({
-                    match left_allocation {
-                        EphemeralValue::JoinResult(product) => product,
-                        _ => unreachable!(),
-                    }
-                })
-                .iter()
-                .map(|fact| fact.len());
-
-                let mut left_idx = 0;
-
-                for (idx, arity) in arities.enumerate() {
-                    cumsum += arity;
-
-                    if *left_column < cumsum {
-                        left_idx = idx;
-                        break;
-                    }
-                }
-
-                ((left_idx, cumsum - left_column), right_column)
-            }));
-        }
-
         right_relation.into_iter().for_each(|right_allocation| {
             let right_fact = match right_allocation {
                 EphemeralValue::FactRef(fact) => fact,
@@ -364,7 +326,7 @@ fn do_join(
                 EphemeralValue::JoinResult(product) => {
                     if join_key_positions.clone().unwrap().into_iter().all(
                         |((left_fact_idx, left_column), right_column)| {
-                            product[left_fact_idx][left_column] == right_fact[*right_column]
+                            product[*left_fact_idx][*left_column] == right_fact[*right_column]
                         },
                     ) {
                         let mut new_product = product.clone();
@@ -376,6 +338,7 @@ fn do_join(
             }
         })
     });
+
     join_result
 }
 
@@ -442,6 +405,37 @@ impl<'a> RuleEvaluator<'a> {
                     let right_delta = index_storage.diff.get(right_symbol);
 
                     let join_result_name = stringify_join(operation);
+                    let mut join_key_positions = None;
+                    if let Some(left_relation) = left {
+                        if let Some(left_allocation) = left_relation.get(0) {
+                            match left_allocation {
+                                EphemeralValue::JoinResult(product) => {
+                                    join_key_positions = Some(join_keys.iter().map(|(left_column, right_column)| {
+                                        let mut cumsum = 0;
+                        
+                                        let arities = 
+                                            product
+                                            .iter()
+                                            .map(|fact| fact.len());
+                        
+                                        let mut left_idx = 0;
+                        
+                                        for (idx, arity) in arities.enumerate() {
+                                            cumsum += arity;
+                        
+                                            if *left_column < cumsum {
+                                                left_idx = idx;
+                                                break;
+                                            }
+                                        }
+                        
+                                        ((left_idx, cumsum - left_column), *right_column)
+                                    }).collect::<Vec<_>>());
+                                },
+                                EphemeralValue::FactRef(_) => {}
+                            }
+                        };
+                    }
 
                     let left_right_delta = {
                         if left.is_some() && right_delta.is_some() {
@@ -453,6 +447,7 @@ impl<'a> RuleEvaluator<'a> {
                                 left.as_ref().unwrap(),
                                 right_delta.as_ref().unwrap(),
                                 &join_result_name,
+                                join_key_positions.as_ref(),
                             ))
                         } else {
                             None
@@ -468,6 +463,7 @@ impl<'a> RuleEvaluator<'a> {
                                 left_delta.as_ref().unwrap(),
                                 right.as_ref().unwrap(),
                                 &join_result_name,
+                                join_key_positions.as_ref(),
                             ))
                         } else {
                             None
@@ -483,6 +479,7 @@ impl<'a> RuleEvaluator<'a> {
                                 left_delta.as_ref().unwrap(),
                                 right_delta.as_ref().unwrap(),
                                 &join_result_name,
+                                join_key_positions.as_ref(),
                             ))
                         } else {
                             None

@@ -1,6 +1,7 @@
 use crate::engine::storage::RelationStorage;
 use crate::evaluation::query::pattern_match;
 use crate::evaluation::semi_naive::semi_naive_evaluation;
+use crate::evaluation::spj_processor::Stack;
 use crate::helpers::helpers::{
     add_prefix, split_program, OVERDELETION_PREFIX, REDERIVATION_PREFIX,
 };
@@ -15,7 +16,9 @@ pub struct MicroRuntime {
     unprocessed_deletions: RelationStorage,
     program: Program,
     nonrecursive_program: Program,
+    nonrecursive_stacks: Vec<Stack>,
     recursive_program: Program,
+    recursive_stacks: Vec<Stack>,
     nonrecursive_overdeletion_program: Program,
     recursive_overdeletion_program: Program,
     nonrecursive_rederivation_program: Program,
@@ -184,6 +187,9 @@ impl MicroRuntime {
         let nonrecursive_overdeletion_program = sort_program(&nonrecursive_overdeletion_program);
         let nonrecursive_rederivation_program = sort_program(&nonrecursive_rederivation_program);
 
+        let nonrecursive_stacks = nonrecursive_program.inner.iter().map(|rule| Stack::from(rule.clone())).collect();
+        let recursive_stacks = recursive_program.inner.iter().map(|rule| Stack::from(rule.clone())).collect();
+
         Self {
             processed,
             unprocessed_insertions,
@@ -195,6 +201,8 @@ impl MicroRuntime {
             recursive_overdeletion_program,
             nonrecursive_rederivation_program,
             recursive_rederivation_program,
+            nonrecursive_stacks,
+            recursive_stacks,
         }
     }
     pub fn safe(&self) -> bool {
