@@ -1,13 +1,13 @@
-extern crate proc_macro;
 extern crate common;
+extern crate proc_macro;
 
+use common::program_transformations::dependency_graph::{generate_rule_dependency_graph, stratify};
+use datalog_syntax::{Atom, Rule, Term, TypedValue};
 use proc_macro::TokenStream;
 use quote::quote;
-use std::collections::{ HashSet, HashMap };
-use syn::parse::{ Parse, ParseStream };
-use syn::{ bracketed, parenthesized, Expr, Ident, Result, Token };
-use common::program_transformations::dependency_graph::{ generate_rule_dependency_graph, stratify };
-use datalog_syntax::{ Rule, Atom, Term, TypedValue };
+use std::collections::{HashMap, HashSet};
+use syn::parse::{Parse, ParseStream};
+use syn::{bracketed, parenthesized, Expr, Ident, Result, Token};
 
 enum TermArg {
     Variable(Ident),
@@ -41,50 +41,45 @@ impl Parse for TermArg {
 impl Parse for RuleMacroInput {
     fn parse(input: ParseStream) -> Result<Self> {
         let head = input.parse::<AtomArgs>()?;
-        let mut distinguished_variables: HashMap<String, (&Ident, bool)> = head.args
+        let mut distinguished_variables: HashMap<String, (&Ident, bool)> = head
+            .args
             .iter()
             .filter(|term| matches!(term, TermArg::Variable(_)))
-            .map(|variable| {
-                match variable {
-                    TermArg::Variable(ident) => (ident.to_string(), (ident, false)),
-                    _ => unreachable!(),
-                }
+            .map(|variable| match variable {
+                TermArg::Variable(ident) => (ident.to_string(), (ident, false)),
+                _ => unreachable!(),
             })
             .collect();
 
         input.parse::<Token![<-]>()?;
         let content2;
         bracketed!(content2 in input);
-        let body: syn::punctuated::Punctuated<AtomArgs, Token![,]> = content2.parse_terminated(
-            AtomArgs::parse
-        )?;
+        let body: syn::punctuated::Punctuated<AtomArgs, Token![,]> =
+            content2.parse_terminated(AtomArgs::parse)?;
         let body_vec: Vec<AtomArgs> = body.into_iter().collect();
         body_vec.iter().for_each(|body_atom| {
-            body_atom.args
+            body_atom
+                .args
                 .iter()
                 .filter(|term| matches!(term, TermArg::Variable(_)))
-                .for_each(|variable| {
-                    match variable {
-                        TermArg::Variable(ident) => {
-                            let owned_ident = ident.to_string();
+                .for_each(|variable| match variable {
+                    TermArg::Variable(ident) => {
+                        let owned_ident = ident.to_string();
 
-                            if distinguished_variables.contains_key(&owned_ident) {
-                                distinguished_variables.get_mut(&owned_ident).unwrap().1 = true;
-                            }
+                        if distinguished_variables.contains_key(&owned_ident) {
+                            distinguished_variables.get_mut(&owned_ident).unwrap().1 = true;
                         }
-                        _ => unreachable!(),
                     }
+                    _ => unreachable!(),
                 });
         });
 
         for (key, value) in distinguished_variables {
             if !value.1 {
-                return Err(
-                    syn::Error::new(
-                        value.0.span(),
-                        format!("variable {} not found in the body", key)
-                    )
-                );
+                return Err(syn::Error::new(
+                    value.0.span(),
+                    format!("variable {} not found in the body", key),
+                ));
             }
         }
 
@@ -121,14 +116,13 @@ pub fn rule(input: TokenStream) -> TokenStream {
     let input = syn::parse_macro_input!(input as RuleMacroInput);
 
     let head_name = &input.head.name;
-    let head_terms: Vec<_> = input.head.args
+    let head_terms: Vec<_> = input
+        .head
+        .args
         .iter()
-        .map(|arg| {
-            match arg {
-                TermArg::Variable(ident) =>
-                    quote! { Term::Variable(stringify!(#ident).to_string()) },
-                TermArg::Constant(expr) => quote! { Term::Constant(TypedValue::from(#expr)) },
-            }
+        .map(|arg| match arg {
+            TermArg::Variable(ident) => quote! { Term::Variable(stringify!(#ident).to_string()) },
+            TermArg::Constant(expr) => quote! { Term::Constant(TypedValue::from(#expr)) },
         })
         .collect();
 
@@ -153,8 +147,7 @@ pub fn rule(input: TokenStream) -> TokenStream {
         })
         .collect();
 
-    let expanded =
-        quote! {
+    let expanded = quote! {
         Rule {
             head: Atom { terms: vec![#(#head_terms),*], symbol: stringify!(#head_name).to_string(), sign: true },
             body: vec![#(#body_atoms),*],
@@ -249,7 +242,9 @@ pub fn semipositive_program(input: TokenStream) -> TokenStream {
                     "Negated atom '{}' appears in the head of another rule!",
                     atom.name
                 );
-                return syn::Error::new(atom.name.span(), message).to_compile_error().into();
+                return syn::Error::new(atom.name.span(), message)
+                    .to_compile_error()
+                    .into();
             }
         }
     }
@@ -314,15 +309,12 @@ fn string_to_ident_with_span(symbol: &str, span: syn::__private::Span) -> Ident 
 
 fn expr_to_typed_value(expr: &Expr) -> TypedValue {
     match expr {
-        Expr::Lit(expr_lit) => {
-            match &expr_lit.lit {
-                syn::Lit::Str(lit_str) => TypedValue::from(lit_str.value()),
-                syn::Lit::Int(lit_int) =>
-                    TypedValue::from(lit_int.base10_parse::<usize>().unwrap()),
-                syn::Lit::Bool(lit_bool) => TypedValue::from(lit_bool.value),
-                _ => panic!("Unsupported literal type"),
-            }
-        }
+        Expr::Lit(expr_lit) => match &expr_lit.lit {
+            syn::Lit::Str(lit_str) => TypedValue::from(lit_str.value()),
+            syn::Lit::Int(lit_int) => TypedValue::from(lit_int.base10_parse::<usize>().unwrap()),
+            syn::Lit::Bool(lit_bool) => TypedValue::from(lit_bool.value),
+            _ => panic!("Unsupported literal type"),
+        },
         _ => panic!("Unsupported expression type"),
     }
 }
@@ -336,27 +328,27 @@ pub fn stratified_program(input: TokenStream) -> TokenStream {
 
     for rule in parsed_input.rules {
         // let head_name = &rule.head.name;
-        let head_terms: Vec<_> = rule.head.args
+        let head_terms: Vec<_> = rule
+            .head
+            .args
             .iter()
-            .map(|arg| {
-                match arg {
-                    TermArg::Variable(ident) => Term::Variable(ident.to_string()),
-                    TermArg::Constant(expr) => Term::Constant(expr_to_typed_value(expr)),
-                }
+            .map(|arg| match arg {
+                TermArg::Variable(ident) => Term::Variable(ident.to_string()),
+                TermArg::Constant(expr) => Term::Constant(expr_to_typed_value(expr)),
             })
             .collect();
 
-        let body_atoms: Vec<_> = rule.body
+        let body_atoms: Vec<_> = rule
+            .body
             .iter()
             .map(|atom| {
                 let atom_name = &atom.name;
-                let atom_terms: Vec<_> = atom.args
+                let atom_terms: Vec<_> = atom
+                    .args
                     .iter()
-                    .map(|arg| {
-                        match arg {
-                            TermArg::Variable(ident) => Term::Variable(ident.to_string()),
-                            TermArg::Constant(expr) => Term::Constant(expr_to_typed_value(expr)),
-                        }
+                    .map(|arg| match arg {
+                        TermArg::Variable(ident) => Term::Variable(ident.to_string()),
+                        TermArg::Constant(expr) => Term::Constant(expr_to_typed_value(expr)),
                     })
                     .collect();
                 Atom {
@@ -387,12 +379,9 @@ pub fn stratified_program(input: TokenStream) -> TokenStream {
             for atom in &rule.body {
                 if !atom.sign && cycle.iter().any(|r| r.head.symbol == atom.symbol) {
                     let message = format!("Negated dependencies form a cycle in SCC: {:?}", cycle);
-                    let ident_with_span = string_to_ident_with_span(
-                        &atom.symbol,
-                        syn::__private::Span::call_site()
-                    );
-                    return syn::Error
-                        ::new(ident_with_span.span(), message)
+                    let ident_with_span =
+                        string_to_ident_with_span(&atom.symbol, syn::__private::Span::call_site());
+                    return syn::Error::new(ident_with_span.span(), message)
                         .to_compile_error()
                         .into();
                 }

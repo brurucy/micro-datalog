@@ -1,13 +1,11 @@
 use ascent::ascent;
-use micro_datalog::engine::datalog::MicroRuntime;
 use crepe::crepe;
 use datalog_rule_macro::program;
 use datalog_syntax::*;
-use lasso::{Key, Rodeo};
+use micro_datalog::engine::datalog::MicroRuntime;
 use std::time::Instant;
 
 // TC benchmark
-/*
 crepe! {
     @input
     struct e(usize, usize);
@@ -33,11 +31,11 @@ fn main() {
         tc(?x, ?z) <- [e(?x, ?y), tc(?y, ?z)]
     };
 
-    let mut micro_runtime = microRuntime::new(program);
+    let mut micro_runtime = MicroRuntime::new(program);
     let mut ascnt_runtime = AscentProgram::default();
     let mut crepe_runtime = Crepe::new();
 
-    let data = include_str!("../data/graph1000.txt");
+    let data = include_str!("../data/graph_dense.txt");
     data.lines().into_iter().for_each(|line| {
         let triple: Vec<_> = line.split(" ").collect();
         let from: usize = triple[0].parse().unwrap();
@@ -65,7 +63,7 @@ fn main() {
     println!("ascent: {} milis", now.elapsed().as_millis());
     println!("inferred tuples: {}", ascnt_runtime.tc.len());
 }
-*/
+/*
 crepe! {
     @input
     struct RDF(usize, usize, usize);
@@ -166,3 +164,4 @@ fn main() {
     println!("ascent: {} milis", now.elapsed().as_millis());
     println!("inferred tuples: {}", ascnt_runtime.T.len());
 }
+*/

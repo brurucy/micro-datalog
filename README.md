@@ -1,9 +1,8 @@
 # Micro Datalog
 
-Micro Datalog is a minimal incremental datalog reasoner. It is primarily meant to be correct, easy to use, and sort-of fast. It happens
-to be **very** fast.
+Micro Datalog is a minimal datalog reasoner. It is primarily meant to be correct and easy to use.
 
-It compiles datalog rules into a sequence of relational algebra operations that are run in an efficient four-instruction
+It compiles datalog rules into a sequence of relational algebra operations that are run with a four-instruction
 __select-project-join__ relational algebra interpreter.
 
 The following snippets showcase the engine in action:
@@ -117,14 +116,4 @@ mod tests {
       assert_eq!(expected_all_from_a_after_update, actual_all_from_a_after_update.into_iter().cloned().collect());
    }
 }
-```
-
-In case you are interested in performance, there is a very simple benchmark under `./src/bin.rs`. It compares `MicroDatalog`
-with [ascent](https://github.com/s-arash/ascent) and [crepe](https://github.com/ekzhang/crepe)
-
-`MicroDatalog` is ~10-20% faster than `crepe`.
-
-To run it, clone the project, extract `./data/lubm1.nt.gz`, and then:
-```shell
-cargo run --release
 ```
