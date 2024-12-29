@@ -1,6 +1,7 @@
 use crate::engine::{index_storage::IndexStorage, storage::RelationStorage};
 use datalog_syntax::Program;
 
+
 pub fn semi_naive_evaluation(
     relation_storage: &mut RelationStorage,
     nonrecursive_program: &Program,
@@ -53,23 +54,16 @@ mod test {
     fn test_one_hop() {
         let mut storage: RelationStorage = Default::default();
         storage.inner.insert("e".to_string(), Default::default());
-        storage.inner.insert("Δe".to_string(), Default::default());
         storage.inner.insert("hop".to_string(), Default::default());
-        storage.inner.insert("Δhop".to_string(), Default::default());
         insert_into(
             &mut storage,
             "e",
             vec![vec!["a".into(), "b".into()], vec!["b".into(), "c".into()]],
         );
-        insert_into(
-            &mut storage,
-            "Δe",
-            vec![vec!["a".into(), "b".into()], vec!["b".into(), "c".into()]],
-        );
 
         let one_hop = program! { hop(?x, ?z) <- [e(?x, ?y), e(?y, ?z)] };
         let (nonrecursive_delta_program, recursive_delta_program) =
-            split_program(&one_hop);
+            split_program(one_hop);
 
         let expected: HashSet<AnonymousGroundAtom> =
             vec![vec!["a".into(), "c".into()]].into_iter().collect();
@@ -91,9 +85,7 @@ mod test {
     fn test_linear_tc() {
         let mut storage: RelationStorage = Default::default();
         storage.inner.insert("e".to_string(), Default::default());
-        storage.inner.insert("Δe".to_string(), Default::default());
         storage.inner.insert("tc".to_string(), Default::default());
-        storage.inner.insert("Δtc".to_string(), Default::default());
 
         insert_into(
             &mut storage,
@@ -104,22 +96,13 @@ mod test {
                 vec!["c".into(), "d".into()],
             ],
         );
-        insert_into(
-            &mut storage,
-            "Δe",
-            vec![
-                vec!["a".into(), "b".into()],
-                vec!["b".into(), "c".into()],
-                vec!["c".into(), "d".into()],
-            ],
-        );
-
+       
         let tc_program = program! {
             tc(?x, ?y) <- [e(?x, ?y)],
             tc(?x, ?z) <- [e(?x, ?y), tc(?y, ?z)],
         };
         let (nonrecursive_delta_program, recursive_delta_program) =
-            split_program(make_delta_program(&tc_program, true));
+            split_program(tc_program);
 
         let expected: HashSet<AnonymousGroundAtom> = vec![
             // First iter
@@ -154,22 +137,11 @@ mod test {
     fn test_nonlinear_tc() {
         let mut storage: RelationStorage = Default::default();
         storage.inner.insert("e".to_string(), Default::default());
-        storage.inner.insert("Δe".to_string(), Default::default());
         storage.inner.insert("tc".to_string(), Default::default());
-        storage.inner.insert("Δtc".to_string(), Default::default());
 
         insert_into(
             &mut storage,
             "e",
-            vec![
-                vec!["a".into(), "b".into()],
-                vec!["b".into(), "c".into()],
-                vec!["c".into(), "d".into()],
-            ],
-        );
-        insert_into(
-            &mut storage,
-            "Δe",
             vec![
                 vec!["a".into(), "b".into()],
                 vec!["b".into(), "c".into()],
@@ -182,7 +154,7 @@ mod test {
             tc(?x, ?z) <- [tc(?x, ?y), tc(?y, ?z)],
         };
         let (nonrecursive_delta_program, recursive_delta_program) =
-            split_program(make_delta_program(&tc_program, true));
+            split_program(tc_program);
 
         let expected: HashSet<AnonymousGroundAtom> = vec![
             // First iter

@@ -3,8 +3,8 @@ use std::sync::Arc;
 use crate::engine::index_storage::{EphemeralValue, IndexStorage};
 use crate::engine::storage::RelationStorage;
 use crate::evaluation::spj_processor::Instruction::{Antijoin, Join, Project};
-use ahash::{HashMap, HashSet};
 use datalog_syntax::{AnonymousGroundAtom, Rule, Term, TypedValue, Variable};
+use indexmap::{IndexMap, IndexSet};
 // This implements a minimal SPJ (Select, Project, Join) processor
 
 pub type Column = usize;
@@ -13,13 +13,13 @@ pub type Symbol = String;
 pub type Sign = bool;
 
 #[derive(PartialEq, Debug, Clone)]
-enum ProjectionInput {
+pub enum ProjectionInput {
     Column(Column),
     Value(Value),
 }
 
 #[derive(PartialEq, Debug, Clone)]
-enum Instruction {
+pub enum Instruction {
     Move(Symbol),
     Select(Symbol, Sign, Column, Value),
     Project(Symbol, Vec<ProjectionInput>),
@@ -29,7 +29,7 @@ enum Instruction {
 
 #[derive(PartialEq, Debug, Clone)]
 pub struct Stack {
-    inner: Vec<Instruction>,
+    pub(crate)inner: Vec<Instruction>,
 }
 
 fn stringify_selection(selection: &Instruction) -> String {
@@ -95,7 +95,7 @@ fn get_selection(symbol: &str, sign: &bool, terms: &Vec<Term>) -> Option<Instruc
     return selection.get(0).cloned();
 }
 
-fn get_variables(terms: &Vec<Term>) -> HashMap<Variable, usize> {
+fn get_variables(terms: &Vec<Term>) -> IndexMap<Variable, usize> {
     terms
         .into_iter()
         .cloned()
@@ -149,7 +149,7 @@ fn get_join(
 }
 
 fn get_projection(rule: &Rule) -> Instruction {
-    let projection_variable_targets: HashSet<String> = rule
+    let projection_variable_targets: IndexSet<String> = rule
         .head
         .terms
         .iter()
@@ -163,8 +163,8 @@ fn get_projection(rule: &Rule) -> Instruction {
         })
         .collect();
 
-    let mut seen: HashSet<_> = Default::default();
-    let mut variable_location_assuming_joins_are_natural: HashMap<Variable, usize> =
+    let mut seen: IndexSet<_> = Default::default();
+    let mut variable_location_assuming_joins_are_natural: IndexMap<Variable, usize> =
         Default::default();
 
     let mut position_assuming_joins_are_natural = 0;
@@ -324,15 +324,17 @@ fn do_join(
                     }
                 }
                 EphemeralValue::JoinResult(product) => {
-                    if join_key_positions.clone().unwrap().into_iter().all(
-                        |((left_fact_idx, left_column), right_column)| {
-                            product[*left_fact_idx][*left_column] == right_fact[*right_column]
-                        },
-                    ) {
-                        let mut new_product = product.clone();
-                        new_product.push(right_fact.clone());
+                    if let Some(join_key_positions) = join_key_positions {
+                        if join_key_positions.into_iter().all(
+                            |((left_fact_idx, left_column), right_column)| {
+                                product[*left_fact_idx][*left_column] == right_fact[*right_column]
+                            },
+                        ) {
+                            let mut new_product = product.clone();
+                            new_product.push(right_fact.clone());
 
-                        join_result.push(EphemeralValue::JoinResult(new_product));
+                            join_result.push(EphemeralValue::JoinResult(new_product));
+                        }
                     }
                 }
             }

@@ -1,24 +1,20 @@
 use crate::engine::storage::RelationStorage;
 use crate::evaluation::query::pattern_match;
 use crate::evaluation::semi_naive::semi_naive_evaluation;
-use crate::evaluation::spj_processor::Stack;
 use crate::helpers::helpers::{
     add_prefix, split_program, OVERDELETION_PREFIX, REDERIVATION_PREFIX,
 };
 use crate::program_transformations::dependency_graph::sort_program;
 use crate::program_transformations::dred::{make_overdeletion_program, make_rederivation_program};
 use datalog_syntax::*;
-use std::collections::HashSet;
-
+use indexmap::IndexSet;
 pub struct MicroRuntime {
     processed: RelationStorage,
     unprocessed_insertions: RelationStorage,
     unprocessed_deletions: RelationStorage,
     program: Program,
     nonrecursive_program: Program,
-    nonrecursive_stacks: Vec<Stack>,
     recursive_program: Program,
-    recursive_stacks: Vec<Stack>,
     nonrecursive_overdeletion_program: Program,
     recursive_overdeletion_program: Program,
     nonrecursive_rederivation_program: Program,
@@ -127,9 +123,9 @@ impl MicroRuntime {
         let mut unprocessed_insertions: RelationStorage = Default::default();
         let mut unprocessed_deletions: RelationStorage = Default::default();
 
-        let mut relations = HashSet::new();
-        let mut overdeletion_relations = HashSet::new();
-        let mut rederive_relations = HashSet::new();
+        let mut relations = IndexSet::new();
+        let mut overdeletion_relations = IndexSet::new();
+        let mut rederive_relations = IndexSet::new();
 
         program.inner.iter().for_each(|rule| {
             relations.insert(&rule.head.symbol);
@@ -187,9 +183,6 @@ impl MicroRuntime {
         let nonrecursive_overdeletion_program = sort_program(&nonrecursive_overdeletion_program);
         let nonrecursive_rederivation_program = sort_program(&nonrecursive_rederivation_program);
 
-        let nonrecursive_stacks = nonrecursive_program.inner.iter().map(|rule| Stack::from(rule.clone())).collect();
-        let recursive_stacks = recursive_program.inner.iter().map(|rule| Stack::from(rule.clone())).collect();
-
         Self {
             processed,
             unprocessed_insertions,
@@ -201,8 +194,6 @@ impl MicroRuntime {
             recursive_overdeletion_program,
             nonrecursive_rederivation_program,
             recursive_rederivation_program,
-            nonrecursive_stacks,
-            recursive_stacks,
         }
     }
     pub fn safe(&self) -> bool {

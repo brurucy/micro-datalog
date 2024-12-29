@@ -3,7 +3,6 @@ use crepe::crepe;
 use datalog_rule_macro::program;
 use datalog_syntax::*;
 use micro_datalog::engine::datalog::MicroRuntime;
-//use lasso::{Key, Rodeo};
 use std::time::Instant;
 
 // TC benchmark
