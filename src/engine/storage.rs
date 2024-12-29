@@ -1,11 +1,11 @@
-use ahash::HashMap;
+use ahash::{HashMap, HashMapExt};
 use crate::helpers::helpers::{DELTA_PREFIX, OVERDELETION_PREFIX, REDERIVATION_PREFIX};
 use datalog_syntax::{AnonymousGroundAtom, Program};
 use indexmap::IndexSet;
 use crate::evaluation::spj_processor::RuleEvaluator;
 use std::sync::Arc;
 
-use super::index_storage::IndexStorage;
+use super::index_storage::{EphemeralValue, IndexStorage};
 pub type FactStorage = IndexSet<Arc<AnonymousGroundAtom>, ahash::RandomState>;
 #[derive(Default)]
 pub struct RelationStorage {
@@ -37,31 +37,6 @@ impl RelationStorage {
                     .collect::<Vec<_>>(),
             )
         })
-    }
-    pub fn drain_deltas(&mut self) {
-        let delta_relation_symbols: Vec<_> = self
-            .inner
-            .iter()
-            .map(|(symbol, _)| symbol.clone())
-            .filter(|relation_symbol| relation_symbol.starts_with(DELTA_PREFIX))
-            .collect();
-
-        delta_relation_symbols
-            .into_iter()
-            .for_each(|relation_symbol| {
-                if relation_symbol.starts_with(DELTA_PREFIX) {
-                    let delta_facts: Vec<_> = self.drain_relation(&relation_symbol);
-
-                    let current_non_delta_relation = self
-                        .inner
-                        .get_mut(relation_symbol.strip_prefix(DELTA_PREFIX).unwrap())
-                        .unwrap();
-
-                    delta_facts.into_iter().for_each(|fact| {
-                        current_non_delta_relation.insert(fact);
-                    });
-                }
-            });
     }
     pub fn overdelete(&mut self) {
         let overdeletion_relations: Vec<_> = self
@@ -201,6 +176,8 @@ impl RelationStorage {
 
     // Nonrecursive materialisation can be done sequentially in one pass.
     pub fn materialize_nonrecursive_delta_program<'a>(&mut self, nonrecursive_program: &Program, index_storage: &mut IndexStorage) {
+        let mut new_diff: HashMap<String, Vec<EphemeralValue>> = HashMap::new();
+
         for (_idx, rule) in nonrecursive_program.inner.iter().enumerate() {
             let evaluator = RuleEvaluator::new(self, rule);
 
@@ -217,12 +194,15 @@ impl RelationStorage {
                 .collect();
 
             self.insert_all(&delta_relation_symbol, diff.clone().into_iter());
-            index_storage.borrow_all(&delta_relation_symbol, diff.into_iter().map(|x| super::index_storage::EphemeralValue::FactRef((x))));
+            new_diff.entry(delta_relation_symbol).or_default().extend(diff.into_iter().map(|x| super::index_storage::EphemeralValue::FactRef(x)));
         }
 
         index_storage.inner.extend(index_storage.diff.drain());
+        index_storage.diff = new_diff;
     }
     pub fn materialize_recursive_delta_program<'a>(&mut self, recursive_program: &Program, index_storage: &mut IndexStorage) {
+        let mut new_diff: HashMap<String, Vec<EphemeralValue>> = HashMap::new();
+
         let evaluation_setup: Vec<_> = recursive_program
             .inner
             .iter()
@@ -248,11 +228,12 @@ impl RelationStorage {
                     .collect();
 
                 self.insert_all(delta_relation_symbol, diff.clone().into_iter());
-                index_storage.borrow_all(&delta_relation_symbol, diff.into_iter().map(|x| super::index_storage::EphemeralValue::FactRef(x)));
+                new_diff.entry(delta_relation_symbol.clone()).or_default().extend(diff.into_iter().map(|x| super::index_storage::EphemeralValue::FactRef(x)));
             },
         );
 
         index_storage.inner.extend(index_storage.diff.drain());
+        index_storage.diff = new_diff;
     }
 
 

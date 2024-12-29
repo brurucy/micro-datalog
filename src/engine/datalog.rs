@@ -91,7 +91,6 @@ impl MicroRuntime {
                 &self.nonrecursive_overdeletion_program,
                 &self.recursive_overdeletion_program
             );
-            self.processed.drain_deltas();
             self.processed.overdelete();
 
             semi_naive_evaluation(
@@ -99,7 +98,6 @@ impl MicroRuntime {
                 &self.nonrecursive_rederivation_program,
                 &self.recursive_rederivation_program
             );
-            self.processed.drain_deltas();
             self.processed.rederive();
 
             self.processed.clear_prefix(OVERDELETION_PREFIX);
@@ -122,8 +120,6 @@ impl MicroRuntime {
                 &self.nonrecursive_program,
                 &self.recursive_program
             );
-
-            self.processed.drain_deltas();
         }
     }
 
