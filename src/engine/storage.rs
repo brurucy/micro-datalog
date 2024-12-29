@@ -1,8 +1,8 @@
-use ahash::{HashMap, HashMapExt};
+use crate::evaluation::spj_processor::RuleEvaluator;
 use crate::helpers::helpers::{DELTA_PREFIX, OVERDELETION_PREFIX, REDERIVATION_PREFIX};
+use ahash::{HashMap, HashMapExt};
 use datalog_syntax::{AnonymousGroundAtom, Program};
 use indexmap::IndexSet;
-use crate::evaluation::spj_processor::RuleEvaluator;
 use std::sync::Arc;
 
 use super::index_storage::{EphemeralValue, IndexStorage};
@@ -14,7 +14,7 @@ pub struct RelationStorage {
 
 impl RelationStorage {
     pub fn get_relation(&self, relation_symbol: &str) -> &FactStorage {
-        return self.inner.get(relation_symbol).unwrap()
+        return self.inner.get(relation_symbol).unwrap();
     }
     pub fn drain_relation(&mut self, relation_symbol: &str) -> Vec<Arc<AnonymousGroundAtom>> {
         let rel = self.inner.get_mut(relation_symbol).unwrap();
@@ -24,8 +24,11 @@ impl RelationStorage {
     pub fn drain_all_relations(
         &mut self,
     ) -> impl Iterator<Item = (String, Vec<Arc<AnonymousGroundAtom>>)> + '_ {
-        let relations_to_be_drained: Vec<_> =
-            self.inner.iter().map(|(symbol, _)| symbol.clone()).collect();
+        let relations_to_be_drained: Vec<_> = self
+            .inner
+            .iter()
+            .map(|(symbol, _)| symbol.clone())
+            .collect();
 
         relations_to_be_drained.into_iter().map(|relation_symbol| {
             (
@@ -175,7 +178,11 @@ impl RelationStorage {
     }
 
     // Nonrecursive materialisation can be done sequentially in one pass.
-    pub fn materialize_nonrecursive_delta_program<'a>(&mut self, nonrecursive_program: &Program, index_storage: &mut IndexStorage) {
+    pub fn materialize_nonrecursive_delta_program<'a>(
+        &mut self,
+        nonrecursive_program: &Program,
+        index_storage: &mut IndexStorage,
+    ) {
         let mut new_diff: HashMap<String, Vec<EphemeralValue>> = HashMap::new();
 
         for (_idx, rule) in nonrecursive_program.inner.iter().enumerate() {
@@ -194,13 +201,20 @@ impl RelationStorage {
                 .collect();
 
             self.insert_all(&delta_relation_symbol, diff.clone().into_iter());
-            new_diff.entry(delta_relation_symbol).or_default().extend(diff.into_iter().map(|x| super::index_storage::EphemeralValue::FactRef(x)));
+            new_diff.entry(delta_relation_symbol).or_default().extend(
+                diff.into_iter()
+                    .map(|x| super::index_storage::EphemeralValue::FactRef(x)),
+            );
         }
 
         index_storage.inner.extend(index_storage.diff.drain());
         index_storage.diff = new_diff;
     }
-    pub fn materialize_recursive_delta_program<'a>(&mut self, recursive_program: &Program, index_storage: &mut IndexStorage) {
+    pub fn materialize_recursive_delta_program<'a>(
+        &mut self,
+        recursive_program: &Program,
+        index_storage: &mut IndexStorage,
+    ) {
         let mut new_diff: HashMap<String, Vec<EphemeralValue>> = HashMap::new();
 
         let evaluation_setup: Vec<_> = recursive_program
@@ -228,14 +242,19 @@ impl RelationStorage {
                     .collect();
 
                 self.insert_all(delta_relation_symbol, diff.clone().into_iter());
-                new_diff.entry(delta_relation_symbol.clone()).or_default().extend(diff.into_iter().map(|x| super::index_storage::EphemeralValue::FactRef(x)));
+                new_diff
+                    .entry(delta_relation_symbol.clone())
+                    .or_default()
+                    .extend(
+                        diff.into_iter()
+                            .map(|x| super::index_storage::EphemeralValue::FactRef(x)),
+                    );
             },
         );
 
         index_storage.inner.extend(index_storage.diff.drain());
         index_storage.diff = new_diff;
     }
-
 
     pub fn len(&self) -> usize {
         return self

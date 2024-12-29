@@ -1,7 +1,7 @@
-use std::collections::HashMap;
 use datalog_syntax::{Program, Rule};
-use petgraph::{algo, Directed};
 use petgraph::graphmap::{DiGraphMap, GraphMap};
+use petgraph::{algo, Directed};
+use std::collections::HashMap;
 
 type RuleGraph<'a> = GraphMap<&'a Rule, bool, Directed>;
 
@@ -33,13 +33,11 @@ pub fn sort_program(program: &Program) -> Program {
     let stratification = stratify(&rule_graph)
         .into_iter()
         .rev()
-        .flat_map( | program| {
-            program
-        })
+        .flat_map(|program| program)
         .cloned()
         .collect();
 
     return Program {
-        inner: stratification
-    }
+        inner: stratification,
+    };
 }

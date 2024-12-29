@@ -1,10 +1,10 @@
 use std::sync::Arc;
 
-use crate::engine::index_storage::{ IndexStorage, EphemeralValue };
+use crate::engine::index_storage::{EphemeralValue, IndexStorage};
 use crate::engine::storage::RelationStorage;
-use ahash::{ HashMap, HashSet };
-use datalog_syntax::{ AnonymousGroundAtom, Rule, Term, TypedValue, Variable };
-use crate::evaluation::spj_processor::Instruction::{ Join, Project, Antijoin };
+use crate::evaluation::spj_processor::Instruction::{Antijoin, Join, Project};
+use ahash::{HashMap, HashSet};
+use datalog_syntax::{AnonymousGroundAtom, Rule, Term, TypedValue, Variable};
 // This implements a minimal SPJ (Select, Project, Join) processor
 
 pub type Column = usize;
@@ -53,10 +53,13 @@ fn stringify_join(join: &Instruction) -> String {
     };
 
     return match join {
-        Instruction::Join(left_symbol, right_symbol, join_keys) | Instruction::Antijoin(left_symbol, right_symbol, join_keys) => {
+        Instruction::Join(left_symbol, right_symbol, join_keys)
+        | Instruction::Antijoin(left_symbol, right_symbol, join_keys) => {
             let join_keys_format = join_keys
                 .iter()
-                .map(|(left_column, right_column)| format!("{}{}{}", left_column, equality, right_column))
+                .map(|(left_column, right_column)| {
+                    format!("{}{}{}", left_column, equality, right_column)
+                })
                 .collect::<Vec<_>>()
                 .join("_");
 
@@ -70,11 +73,9 @@ fn get_selection(symbol: &str, sign: &bool, terms: &Vec<Term>) -> Option<Instruc
     let selection: Vec<Instruction> = terms
         .iter()
         .enumerate()
-        .filter(|(_, term)| {
-            match term {
-                Term::Variable(_) => false,
-                Term::Constant(_) => true,
-            }
+        .filter(|(_, term)| match term {
+            Term::Variable(_) => false,
+            Term::Constant(_) => true,
         })
         .map(|(idx, constant)| {
             let constant_value = match constant {
@@ -86,7 +87,7 @@ fn get_selection(symbol: &str, sign: &bool, terms: &Vec<Term>) -> Option<Instruc
                 symbol.to_string(),
                 sign.clone(),
                 idx,
-                constant_value.clone()
+                constant_value.clone(),
             );
         })
         .collect();
@@ -99,17 +100,13 @@ fn get_variables(terms: &Vec<Term>) -> HashMap<Variable, usize> {
         .into_iter()
         .cloned()
         .enumerate()
-        .filter(|(_, term)| {
-            match term {
-                Term::Variable(_) => true,
-                Term::Constant(_) => false,
-            }
+        .filter(|(_, term)| match term {
+            Term::Variable(_) => true,
+            Term::Constant(_) => false,
         })
-        .map(|(idx, term)| {
-            match term {
-                Term::Variable(name) => (name, idx),
-                Term::Constant(_) => unreachable!(),
-            }
+        .map(|(idx, term)| match term {
+            Term::Variable(name) => (name, idx),
+            Term::Constant(_) => unreachable!(),
         })
         .collect()
 }
@@ -119,7 +116,7 @@ fn get_join(
     right_terms: &Vec<Term>,
     left_symbol: &str,
     right_symbol: &str,
-    anti: bool
+    anti: bool,
 ) -> Option<Instruction> {
     let left_variable_map = get_variables(left_terms);
     let right_variable_map = get_variables(right_terms);
@@ -134,37 +131,41 @@ fn get_join(
 
     if !join_keys.is_empty() {
         return if anti {
-            Some(Antijoin(left_symbol.to_string(), right_symbol.to_string(), join_keys))
+            Some(Antijoin(
+                left_symbol.to_string(),
+                right_symbol.to_string(),
+                join_keys,
+            ))
         } else {
-            Some(Join(left_symbol.to_string(), right_symbol.to_string(), join_keys))
-        }
+            Some(Join(
+                left_symbol.to_string(),
+                right_symbol.to_string(),
+                join_keys,
+            ))
+        };
     }
 
     return None;
 }
 
 fn get_projection(rule: &Rule) -> Instruction {
-    let projection_variable_targets: HashSet<String> = rule.head.terms
+    let projection_variable_targets: HashSet<String> = rule
+        .head
+        .terms
         .iter()
-        .filter(|term| {
-            match term {
-                Term::Variable(_) => true,
-                Term::Constant(_) => false,
-            }
+        .filter(|term| match term {
+            Term::Variable(_) => true,
+            Term::Constant(_) => false,
         })
-        .map(|term| {
-            match term {
-                Term::Variable(name) => name.clone(),
-                Term::Constant(_) => unreachable!(),
-            }
+        .map(|term| match term {
+            Term::Variable(name) => name.clone(),
+            Term::Constant(_) => unreachable!(),
         })
         .collect();
 
     let mut seen: HashSet<_> = Default::default();
-    let mut variable_location_assuming_joins_are_natural: HashMap<
-        Variable,
-        usize
-    > = Default::default();
+    let mut variable_location_assuming_joins_are_natural: HashMap<Variable, usize> =
+        Default::default();
 
     let mut position_assuming_joins_are_natural = 0;
 
@@ -176,10 +177,8 @@ fn get_projection(rule: &Rule) -> Instruction {
                         seen.insert(name.clone());
 
                         if projection_variable_targets.contains(name) {
-                            variable_location_assuming_joins_are_natural.insert(
-                                name.clone(),
-                                position_assuming_joins_are_natural
-                            );
+                            variable_location_assuming_joins_are_natural
+                                .insert(name.clone(), position_assuming_joins_are_natural);
                         }
                     }
                 }
@@ -190,16 +189,17 @@ fn get_projection(rule: &Rule) -> Instruction {
         });
     });
 
-    let projection = rule.head.terms
+    let projection = rule
+        .head
+        .terms
         .iter()
-        .map(|term| {
-            match term {
-                Term::Variable(name) =>
-                    ProjectionInput::Column(
-                        *variable_location_assuming_joins_are_natural.get(name).unwrap()
-                    ),
-                Term::Constant(value) => ProjectionInput::Value(value.clone()),
-            }
+        .map(|term| match term {
+            Term::Variable(name) => ProjectionInput::Column(
+                *variable_location_assuming_joins_are_natural
+                    .get(name)
+                    .unwrap(),
+            ),
+            Term::Constant(value) => ProjectionInput::Value(value.clone()),
         })
         .collect();
 
@@ -224,12 +224,8 @@ impl From<Rule> for Stack {
                 let right_terms = &next_atom.terms;
 
                 if last_join_result_name.is_none() {
-                    if
-                        let Some(selection) = get_selection(
-                            &left_symbol,
-                            &left_sign,
-                            &current_atom.terms
-                        )
+                    if let Some(selection) =
+                        get_selection(&left_symbol, &left_sign, &current_atom.terms)
                     {
                         left_symbol = stringify_selection(&selection);
                         operations.push(selection);
@@ -254,12 +250,12 @@ impl From<Rule> for Stack {
                     right_terms,
                     &left_symbol,
                     &right_symbol,
-                    is_anti_join
+                    is_anti_join,
                 ) {
                     last_join_result_name = Some(stringify_join(&binary_join));
                     last_join_terms = left_terms.clone();
                     last_join_terms.extend(right_terms.clone());
-        
+
                     operations.push(binary_join);
                 }
             } else {
@@ -291,19 +287,25 @@ impl<'a> RuleEvaluator<'a> {
     }
 }
 
-fn do_join(penultimate_operation: usize, relation_symbol_to_be_projected: &mut String, idx: usize, join_keys: &Vec<(usize, usize)>, left_relation: &Vec<EphemeralValue>, right_relation: &Vec<EphemeralValue>, join_result_name: &String) -> Vec<EphemeralValue> {
+fn do_join(
+    penultimate_operation: usize,
+    relation_symbol_to_be_projected: &mut String,
+    idx: usize,
+    join_keys: &Vec<(usize, usize)>,
+    left_relation: &Vec<EphemeralValue>,
+    right_relation: &Vec<EphemeralValue>,
+    join_result_name: &String,
+) -> Vec<EphemeralValue> {
     if idx == penultimate_operation {
         *relation_symbol_to_be_projected = join_result_name.clone();
     }
 
     let mut join_result = vec![];
-    let is_left_product = { 
+    let is_left_product = {
         if let Some(left_allocation) = left_relation.get(0) {
             match left_allocation {
                 EphemeralValue::FactRef(_) => false,
-                EphemeralValue::JoinResult(_) => {
-                    true
-                },
+                EphemeralValue::JoinResult(_) => true,
             }
         } else {
             false
@@ -313,37 +315,33 @@ fn do_join(penultimate_operation: usize, relation_symbol_to_be_projected: &mut S
     left_relation.into_iter().for_each(|left_allocation| {
         let mut join_key_positions = None;
         if is_left_product {
-            join_key_positions = Some(
-                join_keys.iter().map(|(left_column, right_column)| {
-                    let mut cumsum = 0;
+            join_key_positions = Some(join_keys.iter().map(|(left_column, right_column)| {
+                let mut cumsum = 0;
 
-                    let arities = (
-                        {
-                            match left_allocation {
-                                EphemeralValue::JoinResult(product) => product,
-                                _ => unreachable!(),
-                            }
-                        }
-                    )
-                        .iter()
-                        .map(|fact| fact.len());
-
-                    let mut left_idx = 0;
-
-                    for (idx, arity) in arities.enumerate() {
-                        cumsum += arity;
-
-                        if *left_column < cumsum {
-                            left_idx = idx;
-                            break;
-                        }
+                let arities = ({
+                    match left_allocation {
+                        EphemeralValue::JoinResult(product) => product,
+                        _ => unreachable!(),
                     }
-
-                    ((left_idx, cumsum - left_column), right_column)
                 })
-            );
+                .iter()
+                .map(|fact| fact.len());
+
+                let mut left_idx = 0;
+
+                for (idx, arity) in arities.enumerate() {
+                    cumsum += arity;
+
+                    if *left_column < cumsum {
+                        left_idx = idx;
+                        break;
+                    }
+                }
+
+                ((left_idx, cumsum - left_column), right_column)
+            }));
         }
-                
+
         right_relation.into_iter().for_each(|right_allocation| {
             let right_fact = match right_allocation {
                 EphemeralValue::FactRef(fact) => fact,
@@ -352,33 +350,23 @@ fn do_join(penultimate_operation: usize, relation_symbol_to_be_projected: &mut S
 
             match left_allocation {
                 EphemeralValue::FactRef(left_fact) => {
-                    if
-                        join_keys
-                            .iter()
-                            .all(|(left_column, right_column)| {
-                                left_fact[*left_column] == right_fact[*right_column]
-                            })
-                    {
+                    if join_keys.iter().all(|(left_column, right_column)| {
+                        left_fact[*left_column] == right_fact[*right_column]
+                    }) {
                         {
-                            join_result.push(
-                                EphemeralValue::JoinResult(
-                                    vec![left_fact.clone(), right_fact.clone()]
-                                )
-                            );
+                            join_result.push(EphemeralValue::JoinResult(vec![
+                                left_fact.clone(),
+                                right_fact.clone(),
+                            ]));
                         }
                     }
                 }
                 EphemeralValue::JoinResult(product) => {
-                    if
-                        join_key_positions
-                            .clone()
-                            .unwrap()
-                            .into_iter()
-                            .all(|((left_fact_idx, left_column), right_column)| {
-                                product[left_fact_idx][left_column] ==
-                                    right_fact[*right_column]
-                            })
-                    {
+                    if join_key_positions.clone().unwrap().into_iter().all(
+                        |((left_fact_idx, left_column), right_column)| {
+                            product[left_fact_idx][left_column] == right_fact[*right_column]
+                        },
+                    ) {
                         let mut new_product = product.clone();
                         new_product.push(right_fact.clone());
 
@@ -392,7 +380,10 @@ fn do_join(penultimate_operation: usize, relation_symbol_to_be_projected: &mut S
 }
 
 impl<'a> RuleEvaluator<'a> {
-    pub fn step(&self, index_storage: &mut IndexStorage) -> impl Iterator<Item = AnonymousGroundAtom> + 'a {
+    pub fn step(
+        &self,
+        index_storage: &mut IndexStorage,
+    ) -> impl Iterator<Item = AnonymousGroundAtom> + 'a {
         let stack = Stack::from(self.rule.clone());
 
         // There will always be at least two elements on the stack. Move or Select, and then Projection.
@@ -412,7 +403,9 @@ impl<'a> RuleEvaluator<'a> {
 
                         index_storage.borrow_all(
                             symbol,
-                            fact_refs.into_iter().map(|fact| EphemeralValue::FactRef(fact.clone()))
+                            fact_refs
+                                .into_iter()
+                                .map(|fact| EphemeralValue::FactRef(fact.clone())),
                         );
                     }
                 }
@@ -441,49 +434,103 @@ impl<'a> RuleEvaluator<'a> {
                     }
                 }
 
-                Instruction::Join(left_symbol, right_symbol, join_keys) | Instruction::Antijoin(left_symbol, right_symbol, join_keys) => {
-                    let left = index_storage.get_relation(&left_symbol);
-                    let right = index_storage.get_relation(&right_symbol);
-                    let left_delta = index_storage.get_relation_delta(&left_symbol);
-                    let right_delta = index_storage.get_relation_delta(&right_symbol);
+                Instruction::Join(left_symbol, right_symbol, join_keys)
+                | Instruction::Antijoin(left_symbol, right_symbol, join_keys) => {
+                    let left = index_storage.inner.get(left_symbol);
+                    let right = index_storage.inner.get(right_symbol);
+                    let left_delta = index_storage.diff.get(left_symbol);
+                    let right_delta = index_storage.diff.get(right_symbol);
 
                     let join_result_name = stringify_join(operation);
-                    let left_right_delta = do_join(penultimate_operation, &mut relation_symbol_to_be_projected, idx, join_keys, left, right_delta, &join_result_name);
-                    let right_left_delta = do_join(penultimate_operation, &mut relation_symbol_to_be_projected, idx, join_keys, left_delta, right, &join_result_name);
-                    let left_delta_right_delta = do_join(penultimate_operation, &mut relation_symbol_to_be_projected, idx, join_keys, left_delta, right_delta, &join_result_name);
 
-                    index_storage.borrow_all(&join_result_name, left_right_delta.into_iter());
-                    index_storage.borrow_all(&join_result_name, right_left_delta.into_iter());
-                    index_storage.borrow_all(&join_result_name, left_delta_right_delta.into_iter());
+                    let left_right_delta = {
+                        if left.is_some() && right_delta.is_some() {
+                            Some(do_join(
+                                penultimate_operation,
+                                &mut relation_symbol_to_be_projected,
+                                idx,
+                                join_keys,
+                                left.as_ref().unwrap(),
+                                right_delta.as_ref().unwrap(),
+                                &join_result_name,
+                            ))
+                        } else {
+                            None
+                        }
+                    };
+                    let right_left_delta = {
+                        if right.is_some() && left_delta.is_some() {
+                            Some(do_join(
+                                penultimate_operation,
+                                &mut relation_symbol_to_be_projected,
+                                idx,
+                                join_keys,
+                                left_delta.as_ref().unwrap(),
+                                right.as_ref().unwrap(),
+                                &join_result_name,
+                            ))
+                        } else {
+                            None
+                        }
+                    };
+                    let left_delta_right_delta = {
+                        if left_delta.is_some() && right_delta.is_some() {
+                            Some(do_join(
+                                penultimate_operation,
+                                &mut relation_symbol_to_be_projected,
+                                idx,
+                                join_keys,
+                                left_delta.as_ref().unwrap(),
+                                right_delta.as_ref().unwrap(),
+                                &join_result_name,
+                            ))
+                        } else {
+                            None
+                        }
+                    };
+
+                    if let Some(left_right_delta) = left_right_delta {
+                        index_storage.borrow_all(&join_result_name, left_right_delta.into_iter());
+                    }
+                    if let Some(right_left_delta) = right_left_delta {
+                        index_storage.borrow_all(&join_result_name, right_left_delta.into_iter());
+                    }
+                    if let Some(left_delta_right_delta) = left_delta_right_delta {
+                        index_storage
+                            .borrow_all(&join_result_name, left_delta_right_delta.into_iter());
+                    }
                 }
 
                 Instruction::Project(_symbol, projection_inputs) => {
-                    let ephemeral_relation_to_be_projected = index_storage.diff
-                        .remove(relation_symbol_to_be_projected.as_str())
+                    let ephemeral_relation_to_be_projected = index_storage
+                        .diff
+                        .get(relation_symbol_to_be_projected.as_str())
                         .unwrap();
-                    ephemeral_relation_to_be_projected.into_iter().for_each(|allocation| {
-                        let fact = match allocation {
-                            EphemeralValue::FactRef(fact) => fact.clone(),
-                            EphemeralValue::JoinResult(facts) => {
-                                Arc::new(facts
-                                    .into_iter()
-                                    .flat_map(|fact| fact.iter().cloned().collect::<Vec<_>>())
-                                    .collect())
-                            }
-                        };
-                        let mut projection = vec![];
+                    ephemeral_relation_to_be_projected
+                        .into_iter()
+                        .for_each(|allocation| {
+                            let fact = match allocation {
+                                EphemeralValue::FactRef(fact) => fact.clone(),
+                                EphemeralValue::JoinResult(facts) => Arc::new(
+                                    facts
+                                        .into_iter()
+                                        .flat_map(|fact| fact.iter().cloned().collect::<Vec<_>>())
+                                        .collect(),
+                                ),
+                            };
+                            let mut projection = vec![];
 
-                        projection_inputs.iter().for_each(|projection_input| {
-                            match projection_input {
-                                ProjectionInput::Column(column) => {
-                                    projection.push(fact[*column].clone())
+                            projection_inputs.iter().for_each(|projection_input| {
+                                match projection_input {
+                                    ProjectionInput::Column(column) => {
+                                        projection.push(fact[*column].clone())
+                                    }
+                                    ProjectionInput::Value(value) => projection.push(value.clone()),
                                 }
-                                ProjectionInput::Value(value) => { projection.push(value.clone()) }
-                            }
-                        });
+                            });
 
-                        grounded_facts.push(projection)
-                    });
+                            grounded_facts.push(projection)
+                        });
                 }
             }
         }
@@ -492,12 +539,11 @@ impl<'a> RuleEvaluator<'a> {
     }
 }
 
-
 #[cfg(test)]
 mod test {
+    use crate::evaluation::spj_processor::{Instruction, ProjectionInput, Stack};
     use datalog_rule_macro::rule;
     use datalog_syntax::*;
-    use crate::evaluation::spj_processor::{ Instruction, ProjectionInput, Stack };
 
     #[test]
     fn from_unary_rule_into_stack() {
@@ -508,8 +554,8 @@ mod test {
                 Instruction::Move("T".to_string()),
                 Instruction::Project(
                     "Y".to_string(),
-                    vec![ProjectionInput::Column(0), ProjectionInput::Column(1)]
-                )
+                    vec![ProjectionInput::Column(0), ProjectionInput::Column(1)],
+                ),
             ],
         };
 
@@ -527,8 +573,8 @@ mod test {
                 Instruction::Antijoin("T".to_string(), "E".to_string(), vec![(0, 0), (1, 1)]),
                 Instruction::Project(
                     "Y".to_string(),
-                    vec![ProjectionInput::Column(0), ProjectionInput::Column(1)]
-                )
+                    vec![ProjectionInput::Column(0), ProjectionInput::Column(1)],
+                ),
             ],
         };
 
@@ -549,9 +595,9 @@ mod test {
                     vec![
                         ProjectionInput::Column(2),
                         ProjectionInput::Value(TypedValue::Int(0)),
-                        ProjectionInput::Column(0)
-                    ]
-                )
+                        ProjectionInput::Column(0),
+                    ],
+                ),
             ],
         };
 
@@ -569,8 +615,8 @@ mod test {
                 Instruction::Join("T".to_string(), "T".to_string(), vec![(1, 0)]),
                 Instruction::Project(
                     "T".to_string(),
-                    vec![ProjectionInput::Column(0), ProjectionInput::Column(3)]
-                )
+                    vec![ProjectionInput::Column(0), ProjectionInput::Column(3)],
+                ),
             ],
         };
 
@@ -587,15 +633,19 @@ mod test {
                 Instruction::Select("T".to_string(), true, 1, TypedValue::Int(2)),
                 Instruction::Join("T_1=2".to_string(), "T_1=2".to_string(), vec![(2, 0)]),
                 Instruction::Select("T".to_string(), true, 0, TypedValue::Int(3)),
-                Instruction::Join("T_1=2_T_1=2_2=0".to_string(), "T_0=3".to_string(), vec![(5, 1)]),
+                Instruction::Join(
+                    "T_1=2_T_1=2_2=0".to_string(),
+                    "T_0=3".to_string(),
+                    vec![(5, 1)],
+                ),
                 Instruction::Project(
                     "T".to_string(),
                     vec![
                         ProjectionInput::Column(2),
                         ProjectionInput::Value(TypedValue::Int(0)),
-                        ProjectionInput::Column(8)
-                    ]
-                )
+                        ProjectionInput::Column(8),
+                    ],
+                ),
             ],
         };
 
