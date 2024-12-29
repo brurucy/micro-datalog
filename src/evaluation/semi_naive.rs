@@ -1,7 +1,6 @@
 use crate::engine::{index_storage::IndexStorage, storage::RelationStorage};
 use datalog_syntax::Program;
 
-
 pub fn semi_naive_evaluation(
     relation_storage: &mut RelationStorage,
     nonrecursive_program: &Program,
@@ -14,8 +13,7 @@ pub fn semi_naive_evaluation(
     loop {
         let previous_non_delta_fact_count = relation_storage.len();
 
-        relation_storage
-            .materialize_recursive_delta_program(recursive_program, &mut index_storage);
+        relation_storage.materialize_recursive_delta_program(recursive_program, &mut index_storage);
         let current_non_delta_fact_count = relation_storage.len();
 
         let new_fact_count = current_non_delta_fact_count - previous_non_delta_fact_count;
@@ -62,8 +60,7 @@ mod test {
         );
 
         let one_hop = program! { hop(?x, ?z) <- [e(?x, ?y), e(?y, ?z)] };
-        let (nonrecursive_delta_program, recursive_delta_program) =
-            split_program(one_hop);
+        let (nonrecursive_delta_program, recursive_delta_program) = split_program(one_hop);
 
         let expected: HashSet<AnonymousGroundAtom> =
             vec![vec!["a".into(), "c".into()]].into_iter().collect();
@@ -96,13 +93,12 @@ mod test {
                 vec!["c".into(), "d".into()],
             ],
         );
-       
+
         let tc_program = program! {
             tc(?x, ?y) <- [e(?x, ?y)],
             tc(?x, ?z) <- [e(?x, ?y), tc(?y, ?z)],
         };
-        let (nonrecursive_delta_program, recursive_delta_program) =
-            split_program(tc_program);
+        let (nonrecursive_delta_program, recursive_delta_program) = split_program(tc_program);
 
         let expected: HashSet<AnonymousGroundAtom> = vec![
             // First iter
@@ -153,8 +149,7 @@ mod test {
             tc(?x, ?y) <- [e(?x, ?y)],
             tc(?x, ?z) <- [tc(?x, ?y), tc(?y, ?z)],
         };
-        let (nonrecursive_delta_program, recursive_delta_program) =
-            split_program(tc_program);
+        let (nonrecursive_delta_program, recursive_delta_program) = split_program(tc_program);
 
         let expected: HashSet<AnonymousGroundAtom> = vec![
             // First iter

@@ -257,11 +257,7 @@ impl RelationStorage {
     }
 
     pub fn len(&self) -> usize {
-        return self
-            .inner
-            .iter()
-            .map(|(_symbol, facts)| facts.len())
-            .sum();
+        return self.inner.iter().map(|(_symbol, facts)| facts.len()).sum();
     }
 
     pub fn is_empty(&self) -> bool {

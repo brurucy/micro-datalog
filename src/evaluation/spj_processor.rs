@@ -29,7 +29,7 @@ pub enum Instruction {
 
 #[derive(PartialEq, Debug, Clone)]
 pub struct Stack {
-    pub(crate)inner: Vec<Instruction>,
+    pub(crate) inner: Vec<Instruction>,
 }
 
 fn stringify_selection(selection: &Instruction) -> String {
@@ -412,28 +412,30 @@ impl<'a> RuleEvaluator<'a> {
                         if let Some(left_allocation) = left_relation.get(0) {
                             match left_allocation {
                                 EphemeralValue::JoinResult(product) => {
-                                    join_key_positions = Some(join_keys.iter().map(|(left_column, right_column)| {
-                                        let mut cumsum = 0;
-                        
-                                        let arities = 
-                                            product
+                                    join_key_positions = Some(
+                                        join_keys
                                             .iter()
-                                            .map(|fact| fact.len());
-                        
-                                        let mut left_idx = 0;
-                        
-                                        for (idx, arity) in arities.enumerate() {
-                                            cumsum += arity;
-                        
-                                            if *left_column < cumsum {
-                                                left_idx = idx;
-                                                break;
-                                            }
-                                        }
-                        
-                                        ((left_idx, cumsum - left_column), *right_column)
-                                    }).collect::<Vec<_>>());
-                                },
+                                            .map(|(left_column, right_column)| {
+                                                let mut cumsum = 0;
+
+                                                let arities = product.iter().map(|fact| fact.len());
+
+                                                let mut left_idx = 0;
+
+                                                for (idx, arity) in arities.enumerate() {
+                                                    cumsum += arity;
+
+                                                    if *left_column < cumsum {
+                                                        left_idx = idx;
+                                                        break;
+                                                    }
+                                                }
+
+                                                ((left_idx, cumsum - left_column), *right_column)
+                                            })
+                                            .collect::<Vec<_>>(),
+                                    );
+                                }
                                 EphemeralValue::FactRef(_) => {}
                             }
                         };
