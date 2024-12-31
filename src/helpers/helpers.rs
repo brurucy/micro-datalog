@@ -44,18 +44,25 @@ pub fn split_program(program: Program) -> (Program, Program) {
 
     program.inner.into_iter().for_each(|rule| {
         let head_symbol = rule.head.symbol.as_str();
+        
+        // A rule is recursive if:
+        // 1. It contains the head predicate in its body, OR
+        // 2. It contains a magic predicate 
+        let is_recursive = rule.body.iter().any(|body_atom| {
+            head_symbol == body_atom.symbol ||  // Traditional recursion
+            body_atom.symbol.starts_with("magic_") // Magic predicates make it recursive
+        });
 
-        if
-            rule.body
-                .iter()
-                .map(|body_atom| &body_atom.symbol)
-                .any(|body_atom_symbol| head_symbol == body_atom_symbol)
-        {
+        if is_recursive {
             recursive.push(rule);
         } else {
             nonrecursive.push(rule);
         }
     });
+
+    println!("Split result:");
+    println!("Nonrecursive: {:?}", nonrecursive);
+    println!("Recursive: {:?}", recursive);
 
     (Program::from(nonrecursive), Program::from(recursive))
 }
@@ -177,6 +184,21 @@ pub fn get_bound_vars_from_adorned(adorned: &AdornedAtom) -> HashSet<String> {
             }
         })
         .collect()
+}
+
+pub fn create_adorned_query(query: &Query) -> Query<'static> {
+    // Leak the string but it's ok since it lives for the duration of the query
+    let symbol = Box::leak(format!("{}_bf", query.symbol).into_boxed_str());
+    let mut builder = QueryBuilder::new(symbol);
+    
+    for matcher in &query.matchers {
+        match matcher {
+            Matcher::Any => builder.with_any(),
+            Matcher::Constant(val) => builder.with_constant(val.clone())
+        }
+    }
+    
+    builder.query
 }
 
 #[cfg(test)]

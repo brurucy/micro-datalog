@@ -89,11 +89,11 @@ pub fn apply_magic_transformation(program: &Program, query: &Query) -> Program {
                 });
 
                 if has_rule_with_same_head {
-                    println!("Skipping magic rule with duplicate head: {:?}", magic_rule);
+                    //  println!("Skipping magic rule with duplicate head: {:?}", magic_rule);
                     continue;
                 }
 
-                println!("Adding new magic rule: {:?}", magic_rule);
+                //  println!("Adding new magic rule: {:?}", magic_rule);
                 seen_rules.insert(rule_str);
                 transformed_rules.push(magic_rule);
             }
@@ -102,7 +102,7 @@ pub fn apply_magic_transformation(program: &Program, query: &Query) -> Program {
             let modified_rule = modify_original_rule(rule, &adorned_pred);
             let rule_str = format!("{:?}", modified_rule);
             if !seen_rules.contains(&rule_str) {
-                println!("Adding new modified rule: {:?}", modified_rule);
+                //   println!("Adding new modified rule: {:?}", modified_rule);
                 seen_rules.insert(rule_str);
                 transformed_rules.push(modified_rule);
             }
@@ -112,10 +112,29 @@ pub fn apply_magic_transformation(program: &Program, query: &Query) -> Program {
     Program::from(transformed_rules)
 }
 
+/// Creates a magic seed fact for a given query
+pub fn create_magic_seed_fact(query: &Query) -> (String, AnonymousGroundAtom) {
+    // Format is "magic_<pred>_bf" for our binding pattern
+    let magic_pred = format!("magic_{}_bf", query.symbol);
+
+    // Get the bound values from the query to create seed fact
+    let seed_fact: Vec<TypedValue> = query.matchers
+        .iter()
+        .filter_map(|matcher| {
+            match matcher {
+                Matcher::Constant(val) => Some(val.clone()),
+                Matcher::Any => None,
+            }
+        })
+        .collect();
+
+    (magic_pred, seed_fact)
+}
+
 fn create_magic_rules(rule: &Rule, adorned_head: &AdornedAtom) -> Vec<Rule> {
-    println!("\n=== Creating magic rules ===");
-    println!("Rule: {:?}", rule);
-    println!("Adorned head: {:?}", adorned_head);
+    //  println!("\n=== Creating magic rules ===");
+    //  println!("Rule: {:?}", rule);
+    //  println!("Adorned head: {:?}", adorned_head);
 
     let mut magic_rules = Vec::new();
 
@@ -124,12 +143,12 @@ fn create_magic_rules(rule: &Rule, adorned_head: &AdornedAtom) -> Vec<Rule> {
 
     // Track variables that can potentially propagate bindings
     let mut bound_variables = get_bound_vars_from_adorned(adorned_head);
-    println!("Initial bound variables: {:?}", bound_variables);
+    //   println!("Initial bound variables: {:?}", bound_variables);
 
     // First pass: Process each predicate in sequence, building up binding chains
     for (pos, body_atom) in rule.body.iter().enumerate() {
-        println!("Processing predicate at position {}: {:?}", pos, body_atom);
-        println!("Current binding chain: {:?}", binding_chain);
+        //   println!("Processing predicate at position {}: {:?}", pos, body_atom);
+        // println!("Current binding chain: {:?}", binding_chain);
 
         // If this is a base predicate that uses any bound variables,
         // add it to our binding chain because it contributes to binding propagation
@@ -140,7 +159,7 @@ fn create_magic_rules(rule: &Rule, adorned_head: &AdornedAtom) -> Vec<Rule> {
 
             if uses_bound_vars {
                 binding_chain.push(body_atom.clone());
-                println!("Added to binding chain, it is now {:?}", binding_chain);
+                //    println!("Added to binding chain, it is now {:?}", binding_chain);
 
                 // Add any new variables that become bound through this predicate
                 for term in &body_atom.terms {
@@ -163,7 +182,7 @@ fn create_magic_rules(rule: &Rule, adorned_head: &AdornedAtom) -> Vec<Rule> {
         // For derived predicates, we need to:
         // 1. Create a magic rule using the current binding chain if appropriate
         // 2. Add this predicate to the chain for future magic rules
-        println!("Found derived predicate, current binding chain: {:?}", binding_chain);
+        // println!("Found derived predicate, current binding chain: {:?}", binding_chain);
 
         // Only create a magic rule if this predicate uses bound variables
         let uses_bound_vars = body_atom.terms.iter().any(|term| {
@@ -189,10 +208,10 @@ fn create_magic_rules(rule: &Rule, adorned_head: &AdornedAtom) -> Vec<Rule> {
                     body: binding_chain.clone(),
                     id: 0,
                 };
-                println!("Created magic rule: {:?}", magic_rule);
+                //  println!("Created magic rule: {:?}", magic_rule);
                 magic_rules.push(magic_rule);
             } else {
-                println!("Skipping recursive magic rule");
+                //   println!("Skipping recursive magic rule");
             }
 
             // Add the adorned version of this predicate to the binding chain
@@ -215,7 +234,7 @@ fn create_magic_rules(rule: &Rule, adorned_head: &AdornedAtom) -> Vec<Rule> {
         }
     }
 
-    println!("Final magic rules: {:?}", magic_rules);
+    //  println!("Final magic rules: {:?}", magic_rules);
     magic_rules
 }
 
@@ -224,59 +243,59 @@ pub fn collect_new_adorned_predicates(
     adorned_head: &AdornedAtom,
     query_bound_vars: &HashSet<String>
 ) -> Vec<AdornedAtom> {
-    println!("\n=== Collecting new adorned predicates ===");
-    println!("Rule: {:?}", rule);
-    println!("Adorned head: {:?}", adorned_head);
-    println!("Query bound vars: {:?}", query_bound_vars);
+    // println!("\n=== Collecting new adorned predicates ===");
+    //  println!("Rule: {:?}", rule);
+    // println!("Adorned head: {:?}", adorned_head);
+    // println!("Query bound vars: {:?}", query_bound_vars);
 
     let mut new_adorned = Vec::new();
     let mut current_bound_vars = get_bound_vars_from_adorned(adorned_head);
-    println!("Initial bound vars: {:?}", current_bound_vars);
+    //  println!("Initial bound vars: {:?}", current_bound_vars);
 
     for (pos, body_atom) in rule.body.iter().enumerate() {
-        println!("\nProcessing body atom at pos {}: {:?}", pos, body_atom);
+        //  println!("\nProcessing body atom at pos {}: {:?}", pos, body_atom);
 
         if is_derived_predicate(rule, &body_atom.symbol) {
             let bound_vars_at_pos = compute_bound_vars_at_position(rule, pos, &current_bound_vars);
-            println!("Bound vars at pos {}: {:?}", pos, bound_vars_at_pos);
+            //  println!("Bound vars at pos {}: {:?}", pos, bound_vars_at_pos);
 
             let adorned_body = AdornedAtom::from_atom_and_bound_vars(body_atom, &bound_vars_at_pos);
-            println!("Created adorned body: {:?}", adorned_body);
+            //  println!("Created adorned body: {:?}", adorned_body);
 
             // Update bound variables
             current_bound_vars.extend(get_bound_vars_from_adorned(&adorned_body));
-            println!("Updated bound vars: {:?}", current_bound_vars);
+            //  println!("Updated bound vars: {:?}", current_bound_vars);
 
             // Push the adorned body after using it to update bound vars
             new_adorned.push(adorned_body);
         }
     }
 
-    println!("Returning adorned predicates: {:?}", new_adorned);
+    //  println!("Returning adorned predicates: {:?}", new_adorned);
     new_adorned
 }
 
 fn modify_original_rule(rule: &Rule, adorned_head: &AdornedAtom) -> Rule {
-    println!("\n=== Modifying rule ===");
-    println!("Original rule: {:?}", rule);
-    println!("Adorned head: {:?}", adorned_head);
+    // println!("\n=== Modifying rule ===");
+    //  println!("Original rule: {:?}", rule);
+    //  println!("Adorned head: {:?}", adorned_head);
 
     let mut new_body = Vec::new();
 
     // Add magic predicate for the bound arguments of the head
-    println!("\nCreating magic predicate for head:");
+    //  println!("\nCreating magic predicate for head:");
     let magic_terms: Vec<Term> = rule.head.terms
         .iter()
         .zip(adorned_head.adornment.iter())
         .filter_map(|(term, adornment)| {
-            println!("  Checking term {:?} with adornment {:?}", term, adornment);
+            // println!("  Checking term {:?} with adornment {:?}", term, adornment);
             match adornment {
                 Adornment::Bound => {
-                    println!("    Including term (bound)");
+                    // println!("    Including term (bound)");
                     Some(term.clone())
                 }
                 Adornment::Free => {
-                    println!("    Skipping term (free)");
+                    // println!("    Skipping term (free)");
                     None
                 }
             }
@@ -288,44 +307,44 @@ fn modify_original_rule(rule: &Rule, adorned_head: &AdornedAtom) -> Rule {
         terms: magic_terms.clone(),
         sign: true,
     };
-    println!("Created magic predicate: {:?}", magic_predicate);
+    // println!("Created magic predicate: {:?}", magic_predicate);
     new_body.push(magic_predicate);
 
     // Process each body predicate
-    println!("\nProcessing body predicates:");
+    //  println!("\nProcessing body predicates:");
     for (pos, body_atom) in rule.body.iter().enumerate() {
-        println!("\nBody predicate at position {}: {:?}", pos, body_atom);
+        // println!("\nBody predicate at position {}: {:?}", pos, body_atom);
 
         if is_derived_predicate(rule, &body_atom.symbol) {
-            println!("This is a derived predicate ({})", body_atom.symbol);
+            //   println!("This is a derived predicate ({})", body_atom.symbol);
             // For derived predicates, we always use bf pattern for consistency
             let adornment = vec![Adornment::Bound, Adornment::Free];
-            println!("Using consistent bf adornment pattern: {:?}", adornment);
+            //   println!("Using consistent bf adornment pattern: {:?}", adornment);
 
             let adorned_body = AdornedAtom {
                 atom: body_atom.clone(),
                 adornment: adornment,
             };
-            println!("Created adorned body: {:?}", adorned_body);
+            //  println!("Created adorned body: {:?}", adorned_body);
 
             let modified_predicate = modify_body_predicate(body_atom, &adorned_body);
-            println!("Modified predicate: {:?}", modified_predicate);
+            //  println!("Modified predicate: {:?}", modified_predicate);
             new_body.push(modified_predicate);
         } else {
-            println!("This is a base predicate - keeping unchanged");
+            //  println!("This is a base predicate - keeping unchanged");
             new_body.push(body_atom.clone());
         }
     }
 
     let modified_head = create_adorned_head_predicate(&rule.head, adorned_head);
-    println!("\nCreated modified head: {:?}", modified_head);
+    //  println!("\nCreated modified head: {:?}", modified_head);
 
     let modified_rule = Rule {
         head: modified_head,
         body: new_body,
         id: 0,
     };
-    println!("\nFinal modified rule: {:?}", modified_rule);
+    //  println!("\nFinal modified rule: {:?}", modified_rule);
 
     modified_rule
 }
@@ -577,5 +596,66 @@ mod tests {
 
         let transformed = apply_magic_transformation(&program, &query);
         assert_eq!(transformed, expected);
+    }
+
+    #[test]
+    fn test_create_magic_seed_fact() {
+        // Test case 1: Single constant
+        let query = build_query!(ancestor("john", _));
+        let (pred, fact) = create_magic_seed_fact(&query);
+        assert_eq!(pred, "magic_ancestor_bf");
+        assert_eq!(fact, vec![TypedValue::from("john")]);
+
+        // Test case 2: Multiple constants
+        let query = build_query!(path("a", "b"));
+        let (pred, fact) = create_magic_seed_fact(&query);
+        assert_eq!(pred, "magic_path_bf");
+        assert_eq!(fact, vec![TypedValue::from("a"), TypedValue::from("b")]);
+
+        // Test case 3: Mixed constants and variables
+        let query = build_query!(edge(3, _));
+        let (pred, fact) = create_magic_seed_fact(&query);
+        assert_eq!(pred, "magic_edge_bf");
+        assert_eq!(fact, vec![TypedValue::from(3)]);
+
+        // Test case 4: All variables (should give empty seed fact)
+        let query = build_query!(parent(_, _));
+        let (pred, fact) = create_magic_seed_fact(&query);
+        assert_eq!(pred, "magic_parent_bf");
+        assert!(fact.is_empty());
+
+        // Test case 5: Different types of constants
+        let query = build_query!(triple(true, 42, "test"));
+        let (pred, fact) = create_magic_seed_fact(&query);
+        assert_eq!(pred, "magic_triple_bf");
+        assert_eq!(
+            fact,
+            vec![TypedValue::from(true), TypedValue::from(42), TypedValue::from("test")]
+        );
+    }
+
+    // This test verifies how create_magic_seed_fact integrates with the query system
+    #[test]
+    fn test_magic_seed_integration() {
+        let program =
+            program! {
+            ancestor(?x, ?y) <- [parent(?x, ?y)],
+            ancestor(?x, ?z) <- [parent(?x, ?y), ancestor(?y, ?z)]
+        };
+
+        let query = build_query!(ancestor("john", _));
+        let magic_program = apply_magic_transformation(&program, &query);
+
+        let (magic_pred, seed_fact) = create_magic_seed_fact(&query);
+
+        // Verify the seed fact matches what the magic program expects
+        assert!(
+            magic_program.inner
+                .iter()
+                .any(|rule| rule.body.iter().any(|atom| atom.symbol == magic_pred))
+        );
+
+        // The seed fact should contain "john" which will be used for binding
+        assert_eq!(seed_fact, vec![TypedValue::from("john")]);
     }
 }
