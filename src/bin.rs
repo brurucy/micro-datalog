@@ -27,22 +27,41 @@ ascent! {
 
 fn main() {
     let program = program! {
-        ancestor(?x, ?y) <- [person(?x), parent(?x, ?y)],
-        ancestor(?x, ?z) <- [person(?x), parent(?x, ?y), ancestor(?y, ?z)]
+        tc(?x, ?y) <- [e(?x, ?y)],
+        tc(?x, ?z) <- [e(?x, ?y), tc(?y, ?z)]
     };
 
     let mut micro_runtime = MicroRuntime::new(program);
+    let mut ascnt_runtime = AscentProgram::default();
+    let mut crepe_runtime = Crepe::new();
 
-    micro_runtime.insert("parent", vec!["john".into(), "bob".into()]);
-    micro_runtime.insert("parent", vec!["bob".into(), "mary".into()]);
-    micro_runtime.insert("person", vec!["john".into()]);
-    micro_runtime.insert("person", vec!["bob".into()]);
-    micro_runtime.insert("person", vec!["mary".into()]);
+    let data = include_str!("../data/graph_dense.txt");
+    data.lines().into_iter().for_each(|line| {
+        let triple: Vec<_> = line.split(" ").collect();
+        let from: usize = triple[0].parse().unwrap();
+        let to: usize = triple[1].parse().unwrap();
 
+        micro_runtime.insert("e", vec![from.into(), to.into()]);
+        crepe_runtime.e.push(e(from, to));
+        ascnt_runtime.e.push((from, to));
+    });
+
+    let now = Instant::now();
     micro_runtime.poll();
-    let q = build_query!(ancestor(_, _));
+    println!("micro: {} milis", now.elapsed().as_millis());
+    let q = build_query!(tc(_, _));
     let answer: Vec<_> = micro_runtime.query(&q).unwrap().into_iter().collect();
-    println!("{:?}", answer);
+    println!("inferred tuples: {}", answer.len());
+
+    let now = Instant::now();
+    let teecee = crepe_runtime.run();
+    println!("crepe: {} milis", now.elapsed().as_millis());
+    println!("inferred tuples: {}", teecee.0.len());
+
+    let now = Instant::now();
+    ascnt_runtime.run();
+    println!("ascent: {} milis", now.elapsed().as_millis());
+    println!("inferred tuples: {}", ascnt_runtime.tc.len());
 }
 /*
 crepe! {
