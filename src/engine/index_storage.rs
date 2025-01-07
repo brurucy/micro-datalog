@@ -26,7 +26,9 @@ impl IndexStorage {
         } else {
             self.diff
                 .insert(relation_symbol.to_string(), Vec::from_iter(facts));
-            self.inner.insert(relation_symbol.to_string(), Vec::new());
+            if self.inner.get(relation_symbol).is_none() {
+                self.inner.insert(relation_symbol.to_string(), Vec::new());
+            }
         }
     }
 }
