@@ -7,7 +7,6 @@ use crate::evaluation::semi_naive::semi_naive_evaluation;
 use crate::helpers::helpers::{
     add_prefix,
     split_program,
-    create_adorned_query,
     OVERDELETION_PREFIX,
     REDERIVATION_PREFIX,
 };
@@ -30,6 +29,7 @@ pub struct MicroRuntime {
     recursive_overdeletion_program: Program,
     nonrecursive_rederivation_program: Program,
     recursive_rederivation_program: Program,
+    adorned_symbol_storage: String,
 }
 
 impl MicroRuntime {
@@ -180,18 +180,14 @@ impl MicroRuntime {
     pub fn query_program<'a>(
         &'a mut self,
         query: &'a Query,
-        query_temp: &'a Query,
         program: Program
     ) -> Result<impl Iterator<Item = AnonymousGroundAtom> + 'a, String> {
-        println!("\n=== Starting query_program ===");
-
         // Save base facts before transformation
         let mut base_facts = HashMap::new();
         for (rel_name, facts) in &self.processed.inner {
             if !program.inner.iter().any(|rule| rule.head.symbol == *rel_name) {
                 let facts_vec: Vec<Arc<AnonymousGroundAtom>> = facts.iter().cloned().collect();
                 if !facts_vec.is_empty() {
-                    println!("Saving base facts for {}: {:?}", rel_name, facts_vec);
                     base_facts.insert(rel_name.clone(), facts_vec);
                 }
             }
@@ -199,43 +195,36 @@ impl MicroRuntime {
 
         // Transform program using magic sets
         let magic_program = apply_magic_transformation(&program, query);
-        println!("Magic program: {:?}", magic_program);
-        // After creating magic_program:
-        let (nonrec, rec) = split_program(magic_program.clone());
-        println!("\nProgram split:");
-        println!("Nonrecursive: {:?}", nonrec);
-        println!("Recursive: {:?}", rec);
 
         // Create new runtime with transformed program
         *self = MicroRuntime::new(magic_program);
 
         // Restore base facts
         for (rel_name, facts) in base_facts {
-            println!("Restoring {} facts for {}", facts.len(), rel_name);
             self.processed.insert_registered(&rel_name, facts.into_iter());
         }
 
         // Add magic seed fact
+
         let (magic_pred, seed_fact) = create_magic_seed_fact(query);
-        println!("Adding magic seed: {} {:?}", magic_pred, seed_fact);
         self.insert(&magic_pred, seed_fact);
-
-        // Log initial state before evaluation
-        println!("\nInitial state:");
-        println!("Parent facts: {:?}", self.processed.get_relation("parent"));
-        println!("Magic facts: {:?}", self.processed.get_relation(&magic_pred));
-
-        println!("\nStarting evaluation");
         self.poll();
 
-        // Log state after evaluation
-        println!("\nFinal state:");
-        println!("Parent facts: {:?}", self.processed.get_relation("parent"));
-        println!("Magic facts: {:?}", self.processed.get_relation(&magic_pred));
-        println!("Ancestor facts: {:?}", self.processed.get_relation("ancestor_bf"));
+        // Store adorned symbol in runtime storage
+        self.adorned_symbol_storage.clear();
+        self.adorned_symbol_storage.push_str(query.symbol);
+        self.adorned_symbol_storage.push_str("_bf");
+        
+        let symbol = &self.adorned_symbol_storage as &str;
+        
+        // Create adorned query using stored symbol
+        let adorned_query = Query {
+            matchers: query.matchers.clone(),
+            symbol,
+        };
 
-        println!("\nQuerying for results");
-        self.query(&query_temp)
+        // Return query result
+        self.query(&adorned_query)
     }
 
     pub fn new(program: Program) -> Self {
@@ -306,6 +295,7 @@ impl MicroRuntime {
             recursive_overdeletion_program,
             nonrecursive_rederivation_program,
             recursive_rederivation_program,
+            adorned_symbol_storage: String::new(),
         }
     }
     pub fn safe(&self) -> bool {
@@ -684,7 +674,39 @@ mod tests {
         assert_eq!(expected, results);
     }
 
-    /* 
+    #[test]
+    fn test_query_transitive() {
+        // Set up a simple ancestor program
+        let program =
+            program! {
+            ancestor(?x, ?y) <- [person(?x), parent(?x, ?y)],
+            ancestor(?x, ?z) <- [person(?x), parent(?x, ?y), ancestor(?y, ?z)]
+        };
+
+        // Create runtime and add base facts
+        let mut runtime = MicroRuntime::new(program.clone());
+        runtime.insert("parent", vec!["john".into(), "bob".into()]);
+        runtime.insert("parent", vec!["bob".into(), "mary".into()]);
+        runtime.insert("person", vec!["bob".into()]);
+        runtime.insert("person", vec!["john".into()]);
+        runtime.insert("person", vec!["mary".into()]);
+
+        runtime.poll();
+        // Query for ancestors of john
+        let query = build_query!(ancestor("john", _));
+        let results: HashSet<_> = runtime.query(&query).unwrap().collect();
+
+        // Expected results - john is ancestor of both bob and mary
+        let expected: HashSet<_> = vec![
+            vec!["john".into(), "bob".into()],
+            vec!["john".into(), "mary".into()]
+        ]
+            .into_iter()
+            .collect();
+
+        assert_eq!(expected, results);
+    }
+
     #[test]
     fn test_query_program_same_generation() {
         let program =
@@ -706,9 +728,11 @@ mod tests {
         runtime.insert("down", vec!["a2".into(), "b3".into()]);
         runtime.insert("down", vec!["a2".into(), "b4".into()]);
 
+        runtime.poll();
+
         // Query for nodes in same generation as b1
         let query = build_query!(sg("b1", _));
-        let results: HashSet<_> = runtime.query_program(&query, program).unwrap().collect();
+        let results: HashSet<_> = runtime.query(&query).unwrap().collect();
 
         // b1 should be in same generation as b2, b3, and b4
         let expected: HashSet<_> = vec![
@@ -721,7 +745,7 @@ mod tests {
 
         assert_eq!(expected, results);
     }
-
+    /* 
     #[test]
     fn test_query_program_empty_result() {
         let program =

@@ -1,4 +1,4 @@
-use std::fmt::{Debug, Formatter};
+use std::fmt::{ Debug, Formatter };
 
 #[derive(Eq, Ord, PartialEq, PartialOrd, Clone, Hash)]
 pub enum TypedValue {
@@ -83,13 +83,13 @@ impl Debug for Atom {
     }
 }
 
-#[derive(Clone)] 
+#[derive(Clone)]
 pub enum Matcher {
     Any,
     Constant(TypedValue),
 }
 
-#[derive(Clone)] 
+#[derive(Clone)]
 pub struct Query<'a> {
     pub matchers: Vec<Matcher>,
     pub symbol: &'a str,
@@ -108,9 +108,11 @@ impl<'a> QueryBuilder<'a> {
             },
         }
     }
+
     pub fn with_any(&mut self) {
         self.query.matchers.push(Matcher::Any);
     }
+
     pub fn with_constant(&mut self, value: TypedValue) {
         self.query.matchers.push(Matcher::Constant(value))
     }
@@ -124,40 +126,25 @@ impl<'a> From<QueryBuilder<'a>> for Query<'a> {
 
 #[macro_export]
 macro_rules! build_query {
-    ($relation:ident ( $( $matcher:tt ),* $(,)? )) => {{
+    ($relation:ident($($matcher:tt),* $(,)?)) => {
+        {
         let mut builder = QueryBuilder::new(stringify!($relation));
         $(
             build_query!(@matcher builder, $matcher);
         )*
         builder.query
-    }};
-    (@matcher $builder:expr, _) => {{
+        }
+    };
+    (@matcher $builder:expr, _) => {
+        {
         $builder.with_any();
-    }};
-    (@matcher $builder:expr, $value:expr) => {{
+        }
+    };
+    (@matcher $builder:expr, $value:expr) => {
+        {
         $builder.with_constant($value.into());
-    }};
-}
-
-#[macro_export]
-macro_rules! build_adorned_query {
-    // Take the original relation name and matchers
-    ($relation:ident ( $( $matcher:tt ),* $(,)? )) => {{
-        let adorned_name = format!("{}_bf", stringify!($relation));
-        let mut builder = QueryBuilder::new(&adorned_name);
-        $(
-            build_adorned_query!(@matcher builder, $matcher);
-        )*
-        builder.query
-    }};
-    // Handle wildcards just like build_query
-    (@matcher $builder:expr, _) => {{
-        $builder.with_any();
-    }};
-    // Handle constants just like build_query
-    (@matcher $builder:expr, $value:expr) => {{
-        $builder.with_constant($value.into());
-    }};
+        }
+    };
 }
 
 #[derive(Ord, PartialOrd, Eq, PartialEq, Clone, Hash)]
