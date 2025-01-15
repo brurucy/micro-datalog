@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{ HashMap, HashSet };
 use std::sync::Arc;
 
 use crate::engine::storage::RelationStorage;
@@ -7,7 +7,6 @@ use crate::evaluation::semi_naive::semi_naive_evaluation;
 use crate::helpers::helpers::{
     add_prefix,
     split_program,
-    create_adorned_query,
     OVERDELETION_PREFIX,
     REDERIVATION_PREFIX,
 };
@@ -19,6 +18,8 @@ use crate::program_transformations::magic_sets::{
 };
 use datalog_syntax::*;
 use indexmap::IndexSet;
+use crate::engine::subsumptive_table::*;
+
 pub struct MicroRuntime {
     processed: RelationStorage,
     unprocessed_insertions: RelationStorage,
@@ -181,61 +182,100 @@ impl MicroRuntime {
         &'a mut self,
         query: &'a Query,
         query_temp: &'a Query,
-        program: Program
+        program: Program,
+        strategy: &str
     ) -> Result<impl Iterator<Item = AnonymousGroundAtom> + 'a, String> {
-        println!("\n=== Starting query_program ===");
+        match strategy {
+            "Top-down" => {
+                println!("Using subsumptive tabling for evaluation");
+                let mut table = SubsumptiveTable::new();
 
-        // Save base facts before transformation
-        let mut base_facts = HashMap::new();
-        for (rel_name, facts) in &self.processed.inner {
-            if !program.inner.iter().any(|rule| rule.head.symbol == *rel_name) {
-                let facts_vec: Vec<Arc<AnonymousGroundAtom>> = facts.iter().cloned().collect();
-                if !facts_vec.is_empty() {
-                    println!("Saving base facts for {}: {:?}", rel_name, facts_vec);
-                    base_facts.insert(rel_name.clone(), facts_vec);
+                // Save current base facts
+                let mut base_facts = HashMap::new();
+                for (rel_name, facts) in &self.processed.inner {
+                    if !program.inner.iter().any(|rule| rule.head.symbol == *rel_name) {
+                        let facts_vec: Vec<Arc<AnonymousGroundAtom>> = facts
+                            .iter()
+                            .cloned()
+                            .collect();
+                        if !facts_vec.is_empty() {
+                            println!("Saving base facts for {}: {:?}", rel_name, facts_vec);
+                            base_facts.insert(rel_name.clone(), facts_vec);
+                        }
+                    }
                 }
+
+                // Create new runtime with original program
+                *self = MicroRuntime::new(program);
+
+                // Restore base facts
+                for (rel_name, facts) in base_facts {
+                    println!("Restoring {} facts for {}", facts.len(), rel_name);
+                    self.processed.insert_registered(&rel_name, facts.into_iter());
+                }
+                // Evaluate using subsumptive tabling and collect into Vec
+                let results: Vec<_> = self.evaluate_subsumptive(query)?.into_iter().collect();
+                Ok(results.into_iter())
             }
+            "Bottom-up" => {
+                // Save base facts before transformation
+                let mut base_facts = HashMap::new();
+                for (rel_name, facts) in &self.processed.inner {
+                    if !program.inner.iter().any(|rule| rule.head.symbol == *rel_name) {
+                        let facts_vec: Vec<Arc<AnonymousGroundAtom>> = facts
+                            .iter()
+                            .cloned()
+                            .collect();
+                        if !facts_vec.is_empty() {
+                            println!("Saving base facts for {}: {:?}", rel_name, facts_vec);
+                            base_facts.insert(rel_name.clone(), facts_vec);
+                        }
+                    }
+                }
+
+                // Transform program using magic sets
+                let magic_program = apply_magic_transformation(&program, query);
+                println!("Magic program: {:?}", magic_program);
+                // After creating magic_program:
+                let (nonrec, rec) = split_program(magic_program.clone());
+                println!("\nProgram split:");
+                println!("Nonrecursive: {:?}", nonrec);
+                println!("Recursive: {:?}", rec);
+
+                // Create new runtime with transformed program
+                *self = MicroRuntime::new(magic_program);
+
+                // Restore base facts
+                for (rel_name, facts) in base_facts {
+                    println!("Restoring {} facts for {}", facts.len(), rel_name);
+                    self.processed.insert_registered(&rel_name, facts.into_iter());
+                }
+
+                // Add magic seed fact
+                let (magic_pred, seed_fact) = create_magic_seed_fact(query);
+                println!("Adding magic seed: {} {:?}", magic_pred, seed_fact);
+                self.insert(&magic_pred, seed_fact);
+
+                // Log initial state before evaluation
+                println!("\nInitial state:");
+                println!("Parent facts: {:?}", self.processed.get_relation("parent"));
+                println!("Magic facts: {:?}", self.processed.get_relation(&magic_pred));
+
+                println!("\nStarting evaluation");
+                self.poll();
+
+                // Log state after evaluation
+                println!("\nFinal state:");
+                println!("Parent facts: {:?}", self.processed.get_relation("parent"));
+                println!("Magic facts: {:?}", self.processed.get_relation(&magic_pred));
+                println!("Ancestor facts: {:?}", self.processed.get_relation("ancestor_bf"));
+
+                println!("\nQuerying for results");
+                let results: Vec<_> = self.query(&query_temp)?.collect();
+                Ok(results.into_iter())
+            }
+            &_ => Err("Invalid evaluation strategy. Use 'Top-down' or 'Bottom-up'".to_string()),
         }
-
-        // Transform program using magic sets
-        let magic_program = apply_magic_transformation(&program, query);
-        println!("Magic program: {:?}", magic_program);
-        // After creating magic_program:
-        let (nonrec, rec) = split_program(magic_program.clone());
-        println!("\nProgram split:");
-        println!("Nonrecursive: {:?}", nonrec);
-        println!("Recursive: {:?}", rec);
-
-        // Create new runtime with transformed program
-        *self = MicroRuntime::new(magic_program);
-
-        // Restore base facts
-        for (rel_name, facts) in base_facts {
-            println!("Restoring {} facts for {}", facts.len(), rel_name);
-            self.processed.insert_registered(&rel_name, facts.into_iter());
-        }
-
-        // Add magic seed fact
-        let (magic_pred, seed_fact) = create_magic_seed_fact(query);
-        println!("Adding magic seed: {} {:?}", magic_pred, seed_fact);
-        self.insert(&magic_pred, seed_fact);
-
-        // Log initial state before evaluation
-        println!("\nInitial state:");
-        println!("Parent facts: {:?}", self.processed.get_relation("parent"));
-        println!("Magic facts: {:?}", self.processed.get_relation(&magic_pred));
-
-        println!("\nStarting evaluation");
-        self.poll();
-
-        // Log state after evaluation
-        println!("\nFinal state:");
-        println!("Parent facts: {:?}", self.processed.get_relation("parent"));
-        println!("Magic facts: {:?}", self.processed.get_relation(&magic_pred));
-        println!("Ancestor facts: {:?}", self.processed.get_relation("ancestor_bf"));
-
-        println!("\nQuerying for results");
-        self.query(&query_temp)
     }
 
     pub fn new(program: Program) -> Self {
@@ -310,6 +350,172 @@ impl MicroRuntime {
     }
     pub fn safe(&self) -> bool {
         self.unprocessed_insertions.is_empty() && self.unprocessed_deletions.is_empty()
+    }
+
+    pub fn evaluate_subsumptive(
+        &mut self,
+        query: &Query
+    ) -> Result<Vec<AnonymousGroundAtom>, String> {
+        let mut table = SubsumptiveTable::new();
+        let mut results = HashSet::new();
+
+        // Convert query to pattern
+        let pattern: Vec<Option<TypedValue>> = query.matchers
+            .iter()
+            .map(|m| {
+                match m {
+                    Matcher::Any => None,
+                    Matcher::Constant(val) => Some(val.clone()),
+                }
+            })
+            .collect();
+
+        // Evaluate the query using subsumptive evaluation
+        results = self.evaluate_subquery(
+            &(Atom {
+                symbol: query.symbol.to_string(),
+                terms: query.matchers
+                    .iter()
+                    .map(|_| Term::Variable("_".to_string()))
+                    .collect(),
+                sign: true,
+            }),
+            &pattern,
+            &mut table
+        )?;
+
+        // Filter results to match query pattern
+        Ok(
+            results
+                .into_iter()
+                .filter(|fact| pattern_match(query, fact))
+                .collect()
+        )
+    }
+
+    fn evaluate_rule_subsumptive(
+        &self,
+        rule: &Rule,
+        pattern: &[Option<TypedValue>],
+        table: &mut SubsumptiveTable,
+        results: &mut HashSet<AnonymousGroundAtom>
+    ) -> Result<(), String> {
+        let mut bindings = HashMap::new();
+
+        // Initialize bindings with pattern
+        for (i, bound_val) in pattern.iter().enumerate() {
+            if let Some(val) = bound_val {
+                if let Term::Variable(var) = &rule.head.terms[i] {
+                    bindings.insert(var.clone(), val.clone());
+                }
+            }
+        }
+
+        // Evaluate each body predicate using current bindings
+        for body_atom in &rule.body {
+            let subquery_pattern = create_subquery_pattern(body_atom, &bindings);
+            let body_results = self.evaluate_subquery(body_atom, &subquery_pattern, table)?;
+
+            // If no results found for this predicate, rule fails
+            if body_results.is_empty() {
+                return Ok(());
+            }
+
+            update_bindings(&mut bindings, body_atom, &body_results);
+        }
+
+        // Create result if bindings match pattern
+        if let Some(result) = create_result(&rule.head, &bindings) {
+            if
+                result
+                    .iter()
+                    .zip(pattern.iter())
+                    .all(|(val, pat)| {
+                        match pat {
+                            Some(bound_val) => val == bound_val,
+                            None => true,
+                        }
+                    })
+            {
+                results.insert(result);
+            }
+        }
+
+        Ok(())
+    }
+
+    fn evaluate_subquery(
+        &self,
+        atom: &Atom,
+        pattern: &[Option<TypedValue>],
+        table: &mut SubsumptiveTable
+    ) -> Result<HashSet<AnonymousGroundAtom>, String> {
+        println!("\nEvaluating subquery for atom {:?} with pattern {:?}", atom, pattern);
+
+        // Check if we have cached results from a subsuming query
+        if let Some(cached_results) = table.find_subsuming(&atom.symbol, pattern) {
+            println!("Found cached results from subsuming query");
+            return Ok(cached_results.iter().cloned().collect::<HashSet<_>>());
+        }
+
+        // Initialize partial results and cache them immediately
+        let mut all_results = HashSet::new();
+
+        // First handle base facts
+        if let Some(facts) = self.processed.inner.get(&atom.symbol) {
+            let matching_facts: HashSet<_> = facts
+                .iter()
+                .filter(|fact| {
+                    fact.iter()
+                        .zip(pattern)
+                        .all(|(val, pattern_val)| {
+                            match pattern_val {
+                                Some(bound_val) => val == bound_val,
+                                None => true,
+                            }
+                        })
+                })
+                .map(|arc_fact| (**arc_fact).clone())
+                .collect();
+
+            println!("Found {} matching base facts", matching_facts.len());
+            all_results.extend(matching_facts);
+
+            // Cache these initial results before recursion
+            if !all_results.is_empty() {
+                table.insert(&atom.symbol, pattern.to_vec(), all_results.iter().cloned().collect());
+            }
+        }
+
+        // Then handle derived predicates
+        let mut new_results = true;
+        while new_results {
+            new_results = false;
+            let prev_size = all_results.len();
+
+            for rule in &self.program.inner {
+                if rule.head.symbol == atom.symbol {
+                    println!("Evaluating rule: {:?}", rule);
+                    let mut rule_results = HashSet::new();
+                    self.evaluate_rule_subsumptive(rule, pattern, table, &mut rule_results)?;
+
+                    // Track if we got any new results
+                    let old_len = all_results.len();
+                    all_results.extend(rule_results);
+                    if all_results.len() > old_len {
+                        new_results = true;
+                    }
+                }
+            }
+
+            // Cache intermediate results after each iteration
+            if all_results.len() > prev_size {
+                table.insert(&atom.symbol, pattern.to_vec(), all_results.iter().cloned().collect());
+            }
+        }
+
+        println!("Derived {} total results", all_results.len());
+        Ok(all_results)
     }
 }
 
@@ -639,7 +845,7 @@ mod tests {
         let query = build_query!(ancestor("john", _));
         let query_temp = build_query!(ancestor_bf("john", _));
         let results: HashSet<_> = runtime
-            .query_program(&query, &query_temp, program)
+            .query_program(&query, &query_temp, program, "Bottom-up")
             .unwrap()
             .collect();
 
@@ -652,6 +858,52 @@ mod tests {
             .collect();
 
         assert_eq!(expected, results);
+    }
+
+    #[test]
+    fn test_query_program_basic_ancestor_top_down() {
+        // Set up a simple ancestor program
+        let program =
+            program! {
+            ancestor(?x, ?y) <- [parent(?x, ?y)],
+            ancestor(?x, ?z) <- [parent(?x, ?y), ancestor(?y, ?z)]
+        };
+
+        // Create runtime and add base facts
+        let mut runtime = MicroRuntime::new(program.clone());
+        runtime.insert("parent", vec!["john".into(), "bob".into()]);
+        runtime.insert("parent", vec!["bob".into(), "mary".into()]);
+        runtime.poll();
+
+        // Query for ancestors of john
+        let query = build_query!(ancestor("john", _));
+        let results: HashSet<_> = runtime
+            .query_program(&query, &query, program.clone(), "Top-down")
+            .unwrap()
+            .collect();
+
+        // Expected results - john is ancestor of both bob and mary
+        let expected: HashSet<_> = vec![
+            vec!["john".into(), "bob".into()],
+            vec!["john".into(), "mary".into()]
+        ]
+            .into_iter()
+            .collect();
+
+        assert_eq!(expected, results);
+
+        // Test subsumption - query for specific case should reuse previous results
+        let specific_query = build_query!(ancestor("john", "mary"));
+        let specific_results: HashSet<_> = runtime
+            .query_program(&specific_query, &specific_query, program, "Top-down")
+            .unwrap()
+            .collect();
+
+        let expected_specific: HashSet<_> = vec![vec!["john".into(), "mary".into()]]
+            .into_iter()
+            .collect();
+
+        assert_eq!(expected_specific, specific_results);
     }
 
     #[test]
