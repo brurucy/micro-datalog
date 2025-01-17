@@ -1,6 +1,7 @@
 use std::collections::{ HashMap, HashSet };
 use std::sync::Arc;
 
+use crate::engine::index_storage::EphemeralValue;
 use crate::engine::storage::RelationStorage;
 use crate::evaluation::query::pattern_match;
 use crate::evaluation::semi_naive::semi_naive_evaluation;
@@ -206,7 +207,7 @@ impl MicroRuntime {
                 }
 
                 // Create new runtime with original program
-                *self = MicroRuntime::new(program);
+                let runtime = MicroRuntime::new(program);
 
                 // Restore base facts
                 for (rel_name, facts) in base_facts {
@@ -233,45 +234,46 @@ impl MicroRuntime {
                     }
                 }
 
+                // Also collect unprocessed insertions for base predicates
+                for (rel_name, facts) in &self.unprocessed_insertions.inner {
+                    if !program.inner.iter().any(|rule| rule.head.symbol == *rel_name) {
+                        let facts_vec: Vec<Arc<AnonymousGroundAtom>> = facts
+                            .iter()
+                            .cloned()
+                            .collect();
+
+                        if !facts_vec.is_empty() {
+                            base_facts
+                                .entry(rel_name.clone())
+                                .or_insert_with(Vec::new)
+                                .extend(facts_vec);
+                        }
+                    }
+                }
+
                 // Transform program using magic sets
                 let magic_program = apply_magic_transformation(&program, query);
                 println!("Magic program: {:?}", magic_program);
-                // After creating magic_program:
-                let (nonrec, rec) = split_program(magic_program.clone());
-                println!("\nProgram split:");
-                println!("Nonrecursive: {:?}", nonrec);
-                println!("Recursive: {:?}", rec);
 
                 // Create new runtime with transformed program
-                *self = MicroRuntime::new(magic_program);
+                let mut runtime = MicroRuntime::new(magic_program);
 
                 // Restore base facts
                 for (rel_name, facts) in base_facts {
                     println!("Restoring {} facts for {}", facts.len(), rel_name);
-                    self.processed.insert_registered(&rel_name, facts.into_iter());
+                    runtime.processed.insert_registered(&rel_name, facts.into_iter());
                 }
 
                 // Add magic seed fact
                 let (magic_pred, seed_fact) = create_magic_seed_fact(query);
                 println!("Adding magic seed: {} {:?}", magic_pred, seed_fact);
-                self.insert(&magic_pred, seed_fact);
-
-                // Log initial state before evaluation
-                println!("\nInitial state:");
-                println!("Parent facts: {:?}", self.processed.get_relation("parent"));
-                println!("Magic facts: {:?}", self.processed.get_relation(&magic_pred));
+                runtime.insert(&magic_pred, seed_fact);
 
                 println!("\nStarting evaluation");
-                self.poll();
-
-                // Log state after evaluation
-                println!("\nFinal state:");
-                println!("Parent facts: {:?}", self.processed.get_relation("parent"));
-                println!("Magic facts: {:?}", self.processed.get_relation(&magic_pred));
-                println!("Ancestor facts: {:?}", self.processed.get_relation("ancestor_bf"));
+                runtime.poll();
 
                 println!("\nQuerying for results");
-                let results: Vec<_> = self.query(&query_temp)?.collect();
+                let results: Vec<_> = runtime.query(&query_temp)?.collect();
                 Ok(results.into_iter())
             }
             &_ => Err("Invalid evaluation strategy. Use 'Top-down' or 'Bottom-up'".to_string()),
@@ -839,7 +841,6 @@ mod tests {
         let mut runtime = MicroRuntime::new(program.clone());
         runtime.insert("parent", vec!["john".into(), "bob".into()]);
         runtime.insert("parent", vec!["bob".into(), "mary".into()]);
-        runtime.poll();
 
         // Query for ancestors of john
         let query = build_query!(ancestor("john", _));
