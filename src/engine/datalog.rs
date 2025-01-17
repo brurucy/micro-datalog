@@ -188,7 +188,6 @@ impl MicroRuntime {
     ) -> Result<impl Iterator<Item = AnonymousGroundAtom> + 'a, String> {
         match strategy {
             "Top-down" => {
-                println!("Using subsumptive tabling for evaluation");
                 let mut table = SubsumptiveTable::new();
 
                 // Save current base facts
@@ -206,16 +205,35 @@ impl MicroRuntime {
                     }
                 }
 
+                for (rel_name, facts) in &self.unprocessed_insertions.inner {
+                    if !program.inner.iter().any(|rule| rule.head.symbol == *rel_name) {
+                        let facts_vec: Vec<Arc<AnonymousGroundAtom>> = facts
+                            .iter()
+                            .cloned()
+                            .collect();
+
+                        if !facts_vec.is_empty() {
+                            base_facts
+                                .entry(rel_name.clone())
+                                .or_insert_with(Vec::new)
+                                .extend(facts_vec);
+                        }
+                    }
+                }
+
                 // Create new runtime with original program
-                let runtime = MicroRuntime::new(program);
+                let mut runtime = MicroRuntime::new(program);
 
                 // Restore base facts
                 for (rel_name, facts) in base_facts {
                     println!("Restoring {} facts for {}", facts.len(), rel_name);
-                    self.processed.insert_registered(&rel_name, facts.into_iter());
+                    runtime.processed.insert_registered(&rel_name, facts.into_iter());
                 }
                 // Evaluate using subsumptive tabling and collect into Vec
-                let results: Vec<_> = self.evaluate_subsumptive(query)?.into_iter().collect();
+                let results: Vec<_> = runtime
+                    .evaluate_subsumptive(query, &mut table)?
+                    .into_iter()
+                    .collect();
                 Ok(results.into_iter())
             }
             "Bottom-up" => {
@@ -356,9 +374,9 @@ impl MicroRuntime {
 
     pub fn evaluate_subsumptive(
         &mut self,
-        query: &Query
+        query: &Query,
+        table: &mut SubsumptiveTable
     ) -> Result<Vec<AnonymousGroundAtom>, String> {
-        let mut table = SubsumptiveTable::new();
         let mut results = HashSet::new();
 
         // Convert query to pattern
@@ -383,7 +401,7 @@ impl MicroRuntime {
                 sign: true,
             }),
             &pattern,
-            &mut table
+            table
         )?;
 
         // Filter results to match query pattern
@@ -874,7 +892,6 @@ mod tests {
         let mut runtime = MicroRuntime::new(program.clone());
         runtime.insert("parent", vec!["john".into(), "bob".into()]);
         runtime.insert("parent", vec!["bob".into(), "mary".into()]);
-        runtime.poll();
 
         // Query for ancestors of john
         let query = build_query!(ancestor("john", _));
