@@ -82,33 +82,17 @@ impl MicroRuntime {
     }
 
     pub fn poll(&mut self) {
-        println!("\n=== Starting poll() ===");
         if !self.unprocessed_deletions.is_empty() {
-            println!("\nProcessing unprocessed deletions");
             self.unprocessed_deletions
                 .drain_all_relations()
                 .for_each(|(relation_symbol, unprocessed_facts)| {
-                    println!(
-                        "  Draining {} facts from {}",
-                        unprocessed_facts.len(),
-                        relation_symbol
-                    );
                     let mut overdeletion_symbol = relation_symbol.clone();
                     add_prefix(&mut overdeletion_symbol, OVERDELETION_PREFIX);
-
-                    println!("  Adding facts to {}", overdeletion_symbol);
                     self.processed.insert_all(
                         &overdeletion_symbol,
                         unprocessed_facts.into_iter().map(|fact| fact)
                     );
                 });
-
-            println!("\nRunning overdeletion evaluation");
-            println!(
-                "Nonrecursive overdeletion program: {:?}",
-                self.nonrecursive_overdeletion_program
-            );
-            println!("Recursive overdeletion program: {:?}", self.recursive_overdeletion_program);
             semi_naive_evaluation(
                 &mut self.processed,
                 &self.nonrecursive_overdeletion_program,
@@ -116,12 +100,6 @@ impl MicroRuntime {
             );
             self.processed.overdelete();
 
-            println!("\nRunning rederivation evaluation");
-            println!(
-                "Nonrecursive rederivation program: {:?}",
-                self.nonrecursive_rederivation_program
-            );
-            println!("Recursive rederivation program: {:?}", self.recursive_rederivation_program);
             semi_naive_evaluation(
                 &mut self.processed,
                 &self.nonrecursive_rederivation_program,
@@ -134,46 +112,22 @@ impl MicroRuntime {
         }
 
         if !self.unprocessed_insertions.is_empty() {
-            println!("\nProcessing unprocessed insertions");
-            println!("Before processing - Relations:");
-            for (rel, facts) in &self.processed.inner {
-                println!("  {}: {:?}", rel, facts);
-            }
-
             // Additions
             self.unprocessed_insertions
                 .drain_all_relations()
                 .for_each(|(relation_symbol, unprocessed_facts)| {
-                    println!(
-                        "\nDraining {} facts from {}",
-                        unprocessed_facts.len(),
-                        relation_symbol
-                    );
                     // Add them to processed
                     self.processed.insert_registered(
                         &relation_symbol,
                         unprocessed_facts.into_iter()
                     );
-                    println!(
-                        "After insertion - {} facts: {:?}",
-                        relation_symbol,
-                        self.processed.get_relation(&relation_symbol)
-                    );
                 });
 
-            println!("\nRunning semi-naive evaluation");
-            println!("Nonrecursive program: {:?}", self.nonrecursive_program);
-            println!("Recursive program: {:?}", self.recursive_program);
             semi_naive_evaluation(
                 &mut self.processed,
                 &self.nonrecursive_program,
                 &self.recursive_program
             );
-
-            println!("\nAfter evaluation - Final relations state:");
-            for (rel, facts) in &self.processed.inner {
-                println!("  {}: {:?}", rel, facts);
-            }
         } else {
             println!("No unprocessed insertions to handle");
         }
@@ -199,7 +153,6 @@ impl MicroRuntime {
                             .cloned()
                             .collect();
                         if !facts_vec.is_empty() {
-                            println!("Saving base facts for {}: {:?}", rel_name, facts_vec);
                             base_facts.insert(rel_name.clone(), facts_vec);
                         }
                     }
@@ -246,7 +199,6 @@ impl MicroRuntime {
                             .cloned()
                             .collect();
                         if !facts_vec.is_empty() {
-                            println!("Saving base facts for {}: {:?}", rel_name, facts_vec);
                             base_facts.insert(rel_name.clone(), facts_vec);
                         }
                     }
@@ -274,7 +226,15 @@ impl MicroRuntime {
                 println!("Magic program: {:?}", magic_program);
 
                 // Create new runtime with transformed program
-                let mut runtime = MicroRuntime::new(magic_program);
+                let mut runtime = MicroRuntime::new(magic_program.clone());
+
+                // Also initialize storage for all adorned predicates
+                for rule in magic_program.inner {
+                    runtime.processed.inner.entry(rule.head.symbol.clone()).or_default();
+                    for body_atom in &rule.body {
+                        runtime.processed.inner.entry(body_atom.symbol.clone()).or_default();
+                    }
+                }
 
                 // Restore base facts
                 for (rel_name, facts) in base_facts {
@@ -285,6 +245,7 @@ impl MicroRuntime {
                 // Add magic seed fact
                 let (magic_pred, seed_fact) = create_magic_seed_fact(query);
                 println!("Adding magic seed: {} {:?}", magic_pred, seed_fact);
+                runtime.processed.inner.entry(magic_pred.clone()).or_default();
                 runtime.insert(&magic_pred, seed_fact);
 
                 println!("\nStarting evaluation");
@@ -871,6 +832,40 @@ mod tests {
         // Expected results - john is ancestor of both bob and mary
         let expected: HashSet<_> = vec![
             vec!["john".into(), "bob".into()],
+            vec!["john".into(), "mary".into()]
+        ]
+            .into_iter()
+            .collect();
+
+        assert_eq!(expected, results);
+    }
+
+    #[test]
+    fn test_query_program_ff() {
+        // Set up a simple ancestor program
+        let program =
+            program! {
+        tc(?x, ?y) <- [e(?x, ?y)],
+        tc(?x, ?z) <- [e(?x, ?y), tc(?y, ?z)]
+    };
+
+        // Create runtime and add base facts
+        let mut runtime = MicroRuntime::new(program.clone());
+        runtime.insert("e", vec!["john".into(), "bob".into()]);
+        runtime.insert("e", vec!["bob".into(), "mary".into()]);
+
+        // Query for ancestors of john
+        let query = build_query!(tc(_, _));
+        let query_temp = build_query!(tc_ff(_, _));
+        let results: HashSet<_> = runtime
+            .query_program(&query, &query_temp, program, "Bottom-up")
+            .unwrap()
+            .collect();
+
+        // Expected results - john is ancestor of both bob and mary
+        let expected: HashSet<_> = vec![
+            vec!["john".into(), "bob".into()],
+            vec!["bob".into(), "mary".into()],
             vec!["john".into(), "mary".into()]
         ]
             .into_iter()

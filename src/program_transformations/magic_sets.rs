@@ -313,25 +313,16 @@ fn modify_original_rule(rule: &Rule, adorned_head: &AdornedAtom) -> Rule {
     // Process each body predicate
     //  println!("\nProcessing body predicates:");
     for (pos, body_atom) in rule.body.iter().enumerate() {
-        // println!("\nBody predicate at position {}: {:?}", pos, body_atom);
-
         if is_derived_predicate(rule, &body_atom.symbol) {
-            //   println!("This is a derived predicate ({})", body_atom.symbol);
-            // For derived predicates, we always use bf pattern for consistency
-            let adornment = vec![Adornment::Bound, Adornment::Free];
-            //   println!("Using consistent bf adornment pattern: {:?}", adornment);
-
+            // Use the same adornment pattern as the head for recursive predicates
+            let adornment = adorned_head.adornment.clone();
             let adorned_body = AdornedAtom {
                 atom: body_atom.clone(),
                 adornment: adornment,
             };
-            //  println!("Created adorned body: {:?}", adorned_body);
-
             let modified_predicate = modify_body_predicate(body_atom, &adorned_body);
-            //  println!("Modified predicate: {:?}", modified_predicate);
             new_body.push(modified_predicate);
         } else {
-            //  println!("This is a base predicate - keeping unchanged");
             new_body.push(body_atom.clone());
         }
     }
@@ -406,6 +397,26 @@ mod tests {
         assert!(modified.body[0].symbol.starts_with("magic_"));
         assert_eq!(modified.head.symbol, "p_bbf");
         assert_eq!(modified.body.len(), 3);
+    }
+
+    #[test]
+    fn test_tc_magic_transform() {
+        let program =
+            program! {
+            ancestor(?x, ?y) <- [parent(?x, ?y)],
+            ancestor(?x, ?z) <- [parent(?x, ?y), ancestor(?y, ?z)]
+        };
+
+        let query = build_query!(ancestor(_, _));
+
+        let expected =
+            program! {
+           ancestor_ff(?x, ?y) <- [magic_ancestor_ff(), parent(?x, ?y)],
+           ancestor_ff(?x, ?z) <- [magic_ancestor_ff(), parent(?x, ?y), ancestor_ff(?y, ?z)]
+       };
+
+        let transformed = apply_magic_transformation(&program, &query);
+        assert_eq!(transformed, expected);
     }
 
     #[test]
