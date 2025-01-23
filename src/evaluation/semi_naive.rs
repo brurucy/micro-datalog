@@ -6,44 +6,23 @@ pub fn semi_naive_evaluation(
     nonrecursive_program: &Program,
     recursive_program: &Program
 ) {
-    println!("\n=== Starting semi-naive evaluation ===");
     let mut index_storage = IndexStorage::default();
-
-    println!("\nEvaluating nonrecursive rules:");
-    println!("Rules: {:?}", nonrecursive_program);
     relation_storage.materialize_nonrecursive_delta_program(
         nonrecursive_program,
         &mut index_storage
     );
-    println!("After nonrecursive evaluation:");
-    for (rel, facts) in &relation_storage.inner {
-        println!("{}: {:?}", rel, facts);
-    }
 
-    let mut iteration = 1;
     loop {
-        println!("\nRecursive iteration {}:", iteration);
-        println!("Rules: {:?}", recursive_program);
         let previous_non_delta_fact_count = relation_storage.len();
-        println!("Facts before: {}", previous_non_delta_fact_count);
 
         relation_storage.materialize_recursive_delta_program(recursive_program, &mut index_storage);
         let current_non_delta_fact_count = relation_storage.len();
-        println!("Facts after: {}", current_non_delta_fact_count);
 
         let new_fact_count = current_non_delta_fact_count - previous_non_delta_fact_count;
-        println!("New facts: {}", new_fact_count);
-
-        for (rel, facts) in &relation_storage.inner {
-            println!("{}: {:?}", rel, facts);
-        }
 
         if new_fact_count == 0 {
-            println!("No new facts - terminating");
             return;
         }
-
-        iteration += 1;
     }
 }
 

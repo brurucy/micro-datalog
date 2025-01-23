@@ -14,8 +14,6 @@ pub struct RelationStorage {
 
 impl RelationStorage {
     pub fn get_relation(&self, relation_symbol: &str) -> &FactStorage {
-        println!("Getting relation: {}", relation_symbol);
-        println!("Available relations: {:?}", self.inner.keys());
         return self.inner.get(relation_symbol).unwrap();
     }
     pub fn drain_relation(&mut self, relation_symbol: &str) -> Vec<Arc<AnonymousGroundAtom>> {

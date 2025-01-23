@@ -179,7 +179,6 @@ impl MicroRuntime {
 
                 // Restore base facts
                 for (rel_name, facts) in base_facts {
-                    println!("Restoring {} facts for {}", facts.len(), rel_name);
                     runtime.processed.insert_registered(&rel_name, facts.into_iter());
                 }
                 // Evaluate using subsumptive tabling and collect into Vec
@@ -223,7 +222,6 @@ impl MicroRuntime {
 
                 // Transform program using magic sets
                 let magic_program = apply_magic_transformation(&program, query);
-                println!("Magic program: {:?}", magic_program);
 
                 // Create new runtime with transformed program
                 let mut runtime = MicroRuntime::new(magic_program.clone());
@@ -238,20 +236,16 @@ impl MicroRuntime {
 
                 // Restore base facts
                 for (rel_name, facts) in base_facts {
-                    println!("Restoring {} facts for {}", facts.len(), rel_name);
                     runtime.processed.insert_registered(&rel_name, facts.into_iter());
                 }
 
                 // Add magic seed fact
                 let (magic_pred, seed_fact) = create_magic_seed_fact(query);
-                println!("Adding magic seed: {} {:?}", magic_pred, seed_fact);
                 runtime.processed.inner.entry(magic_pred.clone()).or_default();
                 runtime.insert(&magic_pred, seed_fact);
 
-                println!("\nStarting evaluation");
                 runtime.poll();
 
-                println!("\nQuerying for results");
                 let results: Vec<_> = runtime.query(&query_temp)?.collect();
                 Ok(results.into_iter())
             }
@@ -260,7 +254,6 @@ impl MicroRuntime {
     }
 
     pub fn new(program: Program) -> Self {
-        println!("\n=== Initializing MicroRuntime ===");
         let mut processed: RelationStorage = Default::default();
         let mut unprocessed_insertions: RelationStorage = Default::default();
         let mut unprocessed_deletions: RelationStorage = Default::default();
@@ -268,25 +261,18 @@ impl MicroRuntime {
         let mut relations = IndexSet::new();
         let mut overdeletion_relations = IndexSet::new();
         let mut rederive_relations = IndexSet::new();
-
-        println!("Adding relations from program rules:");
         program.inner.iter().for_each(|rule| {
-            println!("  Head: {}", rule.head.symbol);
             relations.insert(&rule.head.symbol);
             overdeletion_relations.insert(format!("{}{}", OVERDELETION_PREFIX, rule.head.symbol));
             rederive_relations.insert(format!("{}{}", REDERIVATION_PREFIX, rule.head.symbol));
             rule.body.iter().for_each(|body_atom| {
-                println!("  Body: {}", body_atom.symbol);
                 relations.insert(&body_atom.symbol);
                 overdeletion_relations.insert(
                     format!("{}{}", OVERDELETION_PREFIX, body_atom.symbol)
                 );
             })
         });
-
-        println!("\nInitializing storage with relations:");
         relations.iter().for_each(|relation_symbol| {
-            println!("  {}", relation_symbol);
             processed.inner.entry(relation_symbol.to_string()).or_default();
 
             unprocessed_insertions.inner.entry(relation_symbol.to_string()).or_default();
@@ -435,7 +421,6 @@ impl MicroRuntime {
 
         // Check if we have cached results from a subsuming query
         if let Some(cached_results) = table.find_subsuming(&atom.symbol, pattern) {
-            println!("Found cached results from subsuming query");
             return Ok(cached_results.iter().cloned().collect::<HashSet<_>>());
         }
 
@@ -458,8 +443,6 @@ impl MicroRuntime {
                 })
                 .map(|arc_fact| (**arc_fact).clone())
                 .collect();
-
-            println!("Found {} matching base facts", matching_facts.len());
             all_results.extend(matching_facts);
 
             // Cache these initial results before recursion
@@ -476,7 +459,6 @@ impl MicroRuntime {
 
             for rule in &self.program.inner {
                 if rule.head.symbol == atom.symbol {
-                    println!("Evaluating rule: {:?}", rule);
                     let mut rule_results = HashSet::new();
                     self.evaluate_rule_subsumptive(rule, pattern, table, &mut rule_results)?;
 
@@ -494,8 +476,6 @@ impl MicroRuntime {
                 table.insert(&atom.symbol, pattern.to_vec(), all_results.iter().cloned().collect());
             }
         }
-
-        println!("Derived {} total results", all_results.len());
         Ok(all_results)
     }
 }

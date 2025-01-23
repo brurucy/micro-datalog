@@ -61,26 +61,15 @@ pub fn create_subquery_pattern(
     atom: &Atom,
     bindings: &HashMap<String, TypedValue>
 ) -> Vec<Option<TypedValue>> {
-    println!("\nCreating subquery pattern for atom {:?} with bindings {:?}", atom, bindings);
-
     atom.terms
         .iter()
         .map(|term| {
             match term {
-                Term::Constant(val) => {
-                    println!("Term is constant: {:?}", val);
-                    Some(val.clone())
-                }
+                Term::Constant(val) => { Some(val.clone()) }
                 Term::Variable(var) => {
                     match bindings.get(var) {
-                        Some(val) => {
-                            println!("Found binding for variable {}: {:?}", var, val);
-                            Some(val.clone())
-                        }
-                        None => {
-                            println!("No binding for variable {}", var);
-                            None
-                        }
+                        Some(val) => { Some(val.clone()) }
+                        None => { None }
                     }
                 }
             }
@@ -93,8 +82,6 @@ pub fn update_bindings(
     atom: &Atom,
     results: &HashSet<AnonymousGroundAtom>
 ) {
-    println!("\nUpdating bindings for atom {:?} with results {:?}", atom, results);
-
     // Get one result to update bindings (ideally we'd handle multiple results)
     if let Some(result) = results.iter().next() {
         // Map each variable in the atom to its corresponding value in the result
@@ -104,7 +91,6 @@ pub fn update_bindings(
             .for_each(|(i, term)| {
                 if let Term::Variable(var) = term {
                     bindings.insert(var.clone(), result[i].clone());
-                    println!("Updated binding: {} = {:?}", var, result[i]);
                 }
             });
     }
@@ -114,23 +100,18 @@ pub fn create_result(
     head: &Atom,
     bindings: &HashMap<String, TypedValue>
 ) -> Option<AnonymousGroundAtom> {
-    println!("\nCreating result for head {:?} with bindings {:?}", head, bindings);
-
     // Try to create result by substituting variables with their bindings
     let mut result = Vec::new();
 
     for term in &head.terms {
         match term {
             Term::Constant(val) => {
-                println!("Adding constant value: {:?}", val);
                 result.push(val.clone());
             }
             Term::Variable(var) => {
                 if let Some(val) = bindings.get(var) {
-                    println!("Adding bound value for {}: {:?}", var, val);
                     result.push(val.clone());
                 } else {
-                    println!("Missing binding for variable {}", var);
                     return None; // Can't create result if any variable is unbound
                 }
             }
