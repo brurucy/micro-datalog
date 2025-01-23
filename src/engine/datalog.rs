@@ -319,13 +319,91 @@ impl MicroRuntime {
         self.unprocessed_insertions.is_empty() && self.unprocessed_deletions.is_empty()
     }
 
-    pub fn evaluate_subsumptive(
+
+    fn evaluate_rule_subsumptive(
+        &self,
+        rule: &Rule,
+        pattern: &[Option<TypedValue>],
+        table: &mut SubsumptiveTable,
+        seen_queries: &mut HashSet<(String, Vec<Option<TypedValue>>)>,
+        results: &mut HashSet<AnonymousGroundAtom>,
+        depth: usize
+    ) -> Result<(), String> {
+
+        let mut all_bindings = vec![HashMap::new()];
+
+        // Initialize bindings with pattern
+        if let Some(bindings) = all_bindings.first_mut() {
+            for (i, bound_val) in pattern.iter().enumerate() {
+                if let Some(val) = bound_val {
+                    if let Term::Variable(var) = &rule.head.terms[i] {
+                        bindings.insert(var.clone(), val.clone());
+                    }
+                }
+            }
+        }
+
+        // Process each body atom
+        for (i, body_atom) in rule.body.iter().enumerate() {
+            let mut next_bindings = Vec::new();
+
+            for curr_bindings in all_bindings {
+                let subquery_pattern = create_subquery_pattern(body_atom, &curr_bindings);
+    
+                let subquery_results = self.evaluate_subquery(
+                    body_atom,
+                    &subquery_pattern,
+                    table,
+                    seen_queries,
+                    depth + 1
+                )?;
+
+                for result in subquery_results {
+                    let mut new_bindings = curr_bindings.clone();
+                    let mut valid = true;
+
+                    for (idx, term) in body_atom.terms.iter().enumerate() {
+                        if let Term::Variable(var) = term {
+                            if let Some(existing) = new_bindings.get(var) {
+                                if existing != &result[idx] {
+                                    valid = false;
+                                    break;
+                                }
+                            } else {
+                                new_bindings.insert(var.clone(), result[idx].clone());
+                            }
+                        }
+                    }
+
+                    if valid {
+                        next_bindings.push(new_bindings);
+                    }
+                }
+            }
+
+            if next_bindings.is_empty() {
+                return Ok(());
+            }
+            all_bindings = next_bindings;
+        }
+
+        // Create results
+        for bindings in all_bindings {
+            if let Some(result) = create_result(&rule.head, &bindings) {
+                results.insert(result);
+            }
+        }
+
+        Ok(())
+    }
+
+    fn evaluate_subsumptive(
         &mut self,
         query: &Query,
         table: &mut SubsumptiveTable
     ) -> Result<Vec<AnonymousGroundAtom>, String> {
-        let mut results = HashSet::new();
 
+        let mut seen_queries = HashSet::new();
         // Convert query to pattern
         let pattern: Vec<Option<TypedValue>> = query.matchers
             .iter()
@@ -337,97 +415,51 @@ impl MicroRuntime {
             })
             .collect();
 
-        // Evaluate the query using subsumptive evaluation
-        results = self.evaluate_subquery(
-            &(Atom {
-                symbol: query.symbol.to_string(),
-                terms: query.matchers
-                    .iter()
-                    .map(|_| Term::Variable("_".to_string()))
-                    .collect(),
-                sign: true,
-            }),
+        let atom = Atom {
+            symbol: query.symbol.to_string(),
+            terms: query.matchers
+                .iter()
+                .map(|_| Term::Variable("_".to_string()))
+                .collect(),
+            sign: true,
+        };
+
+        let results = self.evaluate_subquery(
+            &atom,
             &pattern,
-            table
+            table,
+            &mut seen_queries,
+            0 // Start with depth 0
         )?;
 
-        // Filter results to match query pattern
-        Ok(
-            results
-                .into_iter()
-                .filter(|fact| pattern_match(query, fact))
-                .collect()
-        )
-    }
-
-    fn evaluate_rule_subsumptive(
-        &self,
-        rule: &Rule,
-        pattern: &[Option<TypedValue>],
-        table: &mut SubsumptiveTable,
-        results: &mut HashSet<AnonymousGroundAtom>
-    ) -> Result<(), String> {
-        let mut bindings = HashMap::new();
-
-        // Initialize bindings with pattern
-        for (i, bound_val) in pattern.iter().enumerate() {
-            if let Some(val) = bound_val {
-                if let Term::Variable(var) = &rule.head.terms[i] {
-                    bindings.insert(var.clone(), val.clone());
-                }
-            }
-        }
-
-        // Evaluate each body predicate using current bindings
-        for body_atom in &rule.body {
-            let subquery_pattern = create_subquery_pattern(body_atom, &bindings);
-            let body_results = self.evaluate_subquery(body_atom, &subquery_pattern, table)?;
-
-            // If no results found for this predicate, rule fails
-            if body_results.is_empty() {
-                return Ok(());
-            }
-
-            update_bindings(&mut bindings, body_atom, &body_results);
-        }
-
-        // Create result if bindings match pattern
-        if let Some(result) = create_result(&rule.head, &bindings) {
-            if
-                result
-                    .iter()
-                    .zip(pattern.iter())
-                    .all(|(val, pat)| {
-                        match pat {
-                            Some(bound_val) => val == bound_val,
-                            None => true,
-                        }
-                    })
-            {
-                results.insert(result);
-            }
-        }
-
-        Ok(())
+        Ok(results.into_iter().collect())
     }
 
     fn evaluate_subquery(
         &self,
         atom: &Atom,
         pattern: &[Option<TypedValue>],
-        table: &mut SubsumptiveTable
+        table: &mut SubsumptiveTable,
+        seen_queries: &mut HashSet<(String, Vec<Option<TypedValue>>)>,
+        depth: usize
     ) -> Result<HashSet<AnonymousGroundAtom>, String> {
-        println!("\nEvaluating subquery for atom {:?} with pattern {:?}", atom, pattern);
+        let indent = "  ".repeat(depth);
 
-        // Check if we have cached results from a subsuming query
+        // Check cache first
         if let Some(cached_results) = table.find_subsuming(&atom.symbol, pattern) {
-            return Ok(cached_results.iter().cloned().collect::<HashSet<_>>());
+            return Ok(cached_results.iter().cloned().collect());
         }
 
-        // Initialize partial results and cache them immediately
         let mut all_results = HashSet::new();
+        let query_key = (atom.symbol.clone(), pattern.to_vec());
 
-        // First handle base facts
+        // Check for cycles in recursion
+        if seen_queries.contains(&query_key) {
+            return Ok(all_results);
+        }
+        seen_queries.insert(query_key.clone());
+
+        // Process base facts
         if let Some(facts) = self.processed.inner.get(&atom.symbol) {
             let matching_facts: HashSet<_> = facts
                 .iter()
@@ -444,38 +476,31 @@ impl MicroRuntime {
                 .map(|arc_fact| (**arc_fact).clone())
                 .collect();
             all_results.extend(matching_facts);
+        }
 
-            // Cache these initial results before recursion
-            if !all_results.is_empty() {
-                table.insert(&atom.symbol, pattern.to_vec(), all_results.iter().cloned().collect());
+        // Process rules
+        for rule in &self.program.inner {
+            if rule.head.symbol == atom.symbol {
+                let mut rule_results = HashSet::new();
+                self.evaluate_rule_subsumptive(
+                    rule,
+                    pattern,
+                    table,
+                    seen_queries,
+                    &mut rule_results,
+                    depth + 1
+                )?;
+                all_results.extend(rule_results);
             }
         }
 
-        // Then handle derived predicates
-        let mut new_results = true;
-        while new_results {
-            new_results = false;
-            let prev_size = all_results.len();
+        seen_queries.remove(&query_key);
 
-            for rule in &self.program.inner {
-                if rule.head.symbol == atom.symbol {
-                    let mut rule_results = HashSet::new();
-                    self.evaluate_rule_subsumptive(rule, pattern, table, &mut rule_results)?;
-
-                    // Track if we got any new results
-                    let old_len = all_results.len();
-                    all_results.extend(rule_results);
-                    if all_results.len() > old_len {
-                        new_results = true;
-                    }
-                }
-            }
-
-            // Cache intermediate results after each iteration
-            if all_results.len() > prev_size {
-                table.insert(&atom.symbol, pattern.to_vec(), all_results.iter().cloned().collect());
-            }
+        // Cache results if we have any
+        if !all_results.is_empty() {
+            table.insert(&atom.symbol, pattern.to_vec(), all_results.iter().cloned().collect());
         }
+
         Ok(all_results)
     }
 }
