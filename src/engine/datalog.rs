@@ -1,13 +1,26 @@
+use std::collections::{ HashMap, HashSet };
+use std::sync::Arc;
+
+use crate::engine::index_storage::EphemeralValue;
 use crate::engine::storage::RelationStorage;
 use crate::evaluation::query::pattern_match;
 use crate::evaluation::semi_naive::semi_naive_evaluation;
 use crate::helpers::helpers::{
-    add_prefix, split_program, OVERDELETION_PREFIX, REDERIVATION_PREFIX,
+    add_prefix,
+    split_program,
+    OVERDELETION_PREFIX,
+    REDERIVATION_PREFIX,
 };
 use crate::program_transformations::dependency_graph::sort_program;
-use crate::program_transformations::dred::{make_overdeletion_program, make_rederivation_program};
+use crate::program_transformations::dred::{ make_overdeletion_program, make_rederivation_program };
+use crate::program_transformations::magic_sets::{
+    apply_magic_transformation,
+    create_magic_seed_fact,
+};
 use datalog_syntax::*;
 use indexmap::IndexSet;
+use crate::engine::subsumptive_table::*;
+
 pub struct MicroRuntime {
     processed: RelationStorage,
     unprocessed_insertions: RelationStorage,
@@ -26,8 +39,7 @@ impl MicroRuntime {
         self.unprocessed_insertions.insert(relation, ground_atom)
     }
     pub fn remove(&mut self, query: &Query) {
-        let deletion_targets: Vec<_> = self
-            .processed
+        let deletion_targets: Vec<_> = self.processed
             .get_relation(query.symbol)
             .iter()
             .map(|hash| hash)
@@ -35,13 +47,12 @@ impl MicroRuntime {
             .cloned()
             .collect();
 
-        self.unprocessed_deletions
-            .insert_registered(query.symbol, deletion_targets.into_iter());
+        self.unprocessed_deletions.insert_registered(query.symbol, deletion_targets.into_iter());
     }
     pub fn contains(
         &self,
         relation: &str,
-        ground_atom: &AnonymousGroundAtom,
+        ground_atom: &AnonymousGroundAtom
     ) -> Result<bool, String> {
         if !self.safe() {
             return Err("poll needed to obtain correct results".to_string());
@@ -55,66 +66,190 @@ impl MicroRuntime {
     }
     pub fn query<'a>(
         &'a self,
-        query: &'a Query,
+        query: &'a Query
     ) -> Result<impl Iterator<Item = AnonymousGroundAtom> + 'a, String> {
         if !self.safe() {
             return Err("poll needed to obtain correct results".to_string());
         }
 
-        return Ok(self
-            .processed
-            .get_relation(query.symbol)
-            .iter()
-            .filter(|fact| pattern_match(query, fact))
-            .map(|fact| (**fact).clone()));
+        return Ok(
+            self.processed
+                .get_relation(query.symbol)
+                .iter()
+                .filter(|fact| pattern_match(query, fact))
+                .map(|fact| (**fact).clone())
+        );
     }
 
     pub fn poll(&mut self) {
         if !self.unprocessed_deletions.is_empty() {
-            self.unprocessed_deletions.drain_all_relations().for_each(
-                |(relation_symbol, unprocessed_facts)| {
+            self.unprocessed_deletions
+                .drain_all_relations()
+                .for_each(|(relation_symbol, unprocessed_facts)| {
                     let mut overdeletion_symbol = relation_symbol.clone();
                     add_prefix(&mut overdeletion_symbol, OVERDELETION_PREFIX);
-
                     self.processed.insert_all(
                         &overdeletion_symbol,
-                        unprocessed_facts.into_iter().map(|fact| fact),
+                        unprocessed_facts.into_iter().map(|fact| fact)
                     );
-                },
-            );
-
+                });
             semi_naive_evaluation(
                 &mut self.processed,
                 &self.nonrecursive_overdeletion_program,
-                &self.recursive_overdeletion_program,
+                &self.recursive_overdeletion_program
             );
             self.processed.overdelete();
 
             semi_naive_evaluation(
                 &mut self.processed,
                 &self.nonrecursive_rederivation_program,
-                &self.recursive_rederivation_program,
+                &self.recursive_rederivation_program
             );
             self.processed.rederive();
 
             self.processed.clear_prefix(OVERDELETION_PREFIX);
             self.processed.clear_prefix(REDERIVATION_PREFIX);
         }
+
         if !self.unprocessed_insertions.is_empty() {
             // Additions
-            self.unprocessed_insertions.drain_all_relations().for_each(
-                |(relation_symbol, unprocessed_facts)| {
-                    // And in their respective place
-                    self.processed
-                        .insert_registered(&relation_symbol, unprocessed_facts.into_iter());
-                },
-            );
+            self.unprocessed_insertions
+                .drain_all_relations()
+                .for_each(|(relation_symbol, unprocessed_facts)| {
+                    // Add them to processed
+                    self.processed.insert_registered(
+                        &relation_symbol,
+                        unprocessed_facts.into_iter()
+                    );
+                });
 
             semi_naive_evaluation(
                 &mut self.processed,
                 &self.nonrecursive_program,
-                &self.recursive_program,
+                &self.recursive_program
             );
+        } else {
+            println!("No unprocessed insertions to handle");
+        }
+    }
+
+    pub fn query_program<'a>(
+        &'a mut self,
+        query: &'a Query,
+        query_temp: &'a Query,
+        program: Program,
+        strategy: &str
+    ) -> Result<impl Iterator<Item = AnonymousGroundAtom> + 'a, String> {
+        match strategy {
+            "Top-down" => {
+                let mut table = SubsumptiveTable::new();
+
+                // Save current base facts
+                let mut base_facts = HashMap::new();
+                for (rel_name, facts) in &self.processed.inner {
+                    if !program.inner.iter().any(|rule| rule.head.symbol == *rel_name) {
+                        let facts_vec: Vec<Arc<AnonymousGroundAtom>> = facts
+                            .iter()
+                            .cloned()
+                            .collect();
+                        if !facts_vec.is_empty() {
+                            base_facts.insert(rel_name.clone(), facts_vec);
+                        }
+                    }
+                }
+
+                for (rel_name, facts) in &self.unprocessed_insertions.inner {
+                    if !program.inner.iter().any(|rule| rule.head.symbol == *rel_name) {
+                        let facts_vec: Vec<Arc<AnonymousGroundAtom>> = facts
+                            .iter()
+                            .cloned()
+                            .collect();
+
+                        if !facts_vec.is_empty() {
+                            base_facts
+                                .entry(rel_name.clone())
+                                .or_insert_with(Vec::new)
+                                .extend(facts_vec);
+                        }
+                    }
+                }
+
+                // Create new runtime with original program
+                let mut runtime = MicroRuntime::new(program);
+
+                // Restore base facts
+                for (rel_name, facts) in base_facts {
+                    runtime.processed.insert_registered(&rel_name, facts.into_iter());
+                }
+                // Evaluate using subsumptive tabling and collect into Vec
+                let results: Vec<_> = runtime
+                    .evaluate_subsumptive(query, &mut table)?
+                    .into_iter()
+                    .collect();
+                Ok(results.into_iter())
+            }
+            "Bottom-up" => {
+                // Save base facts before transformation
+                let mut base_facts = HashMap::new();
+                for (rel_name, facts) in &self.processed.inner {
+                    if !program.inner.iter().any(|rule| rule.head.symbol == *rel_name) {
+                        let facts_vec: Vec<Arc<AnonymousGroundAtom>> = facts
+                            .iter()
+                            .cloned()
+                            .collect();
+                        if !facts_vec.is_empty() {
+                            base_facts.insert(rel_name.clone(), facts_vec);
+                        }
+                    }
+                }
+
+                // Also collect unprocessed insertions for base predicates
+                for (rel_name, facts) in &self.unprocessed_insertions.inner {
+                    if !program.inner.iter().any(|rule| rule.head.symbol == *rel_name) {
+                        let facts_vec: Vec<Arc<AnonymousGroundAtom>> = facts
+                            .iter()
+                            .cloned()
+                            .collect();
+
+                        if !facts_vec.is_empty() {
+                            base_facts
+                                .entry(rel_name.clone())
+                                .or_insert_with(Vec::new)
+                                .extend(facts_vec);
+                        }
+                    }
+                }
+
+                // Transform program using magic sets
+                let magic_program = apply_magic_transformation(&program, query);
+
+                // Create new runtime with transformed program
+                let mut runtime = MicroRuntime::new(magic_program.clone());
+
+                // Also initialize storage for all adorned predicates
+                for rule in magic_program.inner {
+                    runtime.processed.inner.entry(rule.head.symbol.clone()).or_default();
+                    for body_atom in &rule.body {
+                        runtime.processed.inner.entry(body_atom.symbol.clone()).or_default();
+                    }
+                }
+
+                // Restore base facts
+                for (rel_name, facts) in base_facts {
+                    runtime.processed.insert_registered(&rel_name, facts.into_iter());
+                }
+
+                // Add magic seed fact
+                let (magic_pred, seed_fact) = create_magic_seed_fact(query);
+                runtime.processed.inner.entry(magic_pred.clone()).or_default();
+                runtime.insert(&magic_pred, seed_fact);
+
+                runtime.poll();
+
+                let results: Vec<_> = runtime.query(&query_temp)?.collect();
+                Ok(results.into_iter())
+            }
+            &_ => Err("Invalid evaluation strategy. Use 'Top-down' or 'Bottom-up'".to_string()),
         }
     }
 
@@ -126,47 +261,31 @@ impl MicroRuntime {
         let mut relations = IndexSet::new();
         let mut overdeletion_relations = IndexSet::new();
         let mut rederive_relations = IndexSet::new();
-
         program.inner.iter().for_each(|rule| {
             relations.insert(&rule.head.symbol);
             overdeletion_relations.insert(format!("{}{}", OVERDELETION_PREFIX, rule.head.symbol));
             rederive_relations.insert(format!("{}{}", REDERIVATION_PREFIX, rule.head.symbol));
             rule.body.iter().for_each(|body_atom| {
                 relations.insert(&body_atom.symbol);
-                overdeletion_relations
-                    .insert(format!("{}{}", OVERDELETION_PREFIX, body_atom.symbol));
+                overdeletion_relations.insert(
+                    format!("{}{}", OVERDELETION_PREFIX, body_atom.symbol)
+                );
             })
         });
-
         relations.iter().for_each(|relation_symbol| {
-            processed
-                .inner
-                .entry(relation_symbol.to_string())
-                .or_default();
+            processed.inner.entry(relation_symbol.to_string()).or_default();
 
-            unprocessed_insertions
-                .inner
-                .entry(relation_symbol.to_string())
-                .or_default();
+            unprocessed_insertions.inner.entry(relation_symbol.to_string()).or_default();
 
-            unprocessed_deletions
-                .inner
-                .entry(relation_symbol.to_string())
-                .or_default();
+            unprocessed_deletions.inner.entry(relation_symbol.to_string()).or_default();
         });
 
         overdeletion_relations.iter().for_each(|relation_symbol| {
-            processed
-                .inner
-                .entry(relation_symbol.to_string())
-                .or_default();
+            processed.inner.entry(relation_symbol.to_string()).or_default();
         });
 
         rederive_relations.iter().for_each(|relation_symbol| {
-            processed
-                .inner
-                .entry(relation_symbol.to_string())
-                .or_default();
+            processed.inner.entry(relation_symbol.to_string()).or_default();
         });
 
         let (nonrecursive_program, recursive_program) = split_program(program.clone());
@@ -199,6 +318,191 @@ impl MicroRuntime {
     pub fn safe(&self) -> bool {
         self.unprocessed_insertions.is_empty() && self.unprocessed_deletions.is_empty()
     }
+
+
+    fn evaluate_rule_subsumptive(
+        &self,
+        rule: &Rule,
+        pattern: &[Option<TypedValue>],
+        table: &mut SubsumptiveTable,
+        seen_queries: &mut HashSet<(String, Vec<Option<TypedValue>>)>,
+        results: &mut HashSet<AnonymousGroundAtom>,
+        depth: usize
+    ) -> Result<(), String> {
+
+        let mut all_bindings = vec![HashMap::new()];
+
+        // Initialize bindings with pattern
+        if let Some(bindings) = all_bindings.first_mut() {
+            for (i, bound_val) in pattern.iter().enumerate() {
+                if let Some(val) = bound_val {
+                    if let Term::Variable(var) = &rule.head.terms[i] {
+                        bindings.insert(var.clone(), val.clone());
+                    }
+                }
+            }
+        }
+
+        // Process each body atom
+        for (i, body_atom) in rule.body.iter().enumerate() {
+            let mut next_bindings = Vec::new();
+
+            for curr_bindings in all_bindings {
+                let subquery_pattern = create_subquery_pattern(body_atom, &curr_bindings);
+    
+                let subquery_results = self.evaluate_subquery(
+                    body_atom,
+                    &subquery_pattern,
+                    table,
+                    seen_queries,
+                    depth + 1
+                )?;
+
+                for result in subquery_results {
+                    let mut new_bindings = curr_bindings.clone();
+                    let mut valid = true;
+
+                    for (idx, term) in body_atom.terms.iter().enumerate() {
+                        if let Term::Variable(var) = term {
+                            if let Some(existing) = new_bindings.get(var) {
+                                if existing != &result[idx] {
+                                    valid = false;
+                                    break;
+                                }
+                            } else {
+                                new_bindings.insert(var.clone(), result[idx].clone());
+                            }
+                        }
+                    }
+
+                    if valid {
+                        next_bindings.push(new_bindings);
+                    }
+                }
+            }
+
+            if next_bindings.is_empty() {
+                return Ok(());
+            }
+            all_bindings = next_bindings;
+        }
+
+        // Create results
+        for bindings in all_bindings {
+            if let Some(result) = create_result(&rule.head, &bindings) {
+                results.insert(result);
+            }
+        }
+
+        Ok(())
+    }
+
+    fn evaluate_subsumptive(
+        &mut self,
+        query: &Query,
+        table: &mut SubsumptiveTable
+    ) -> Result<Vec<AnonymousGroundAtom>, String> {
+
+        let mut seen_queries = HashSet::new();
+        // Convert query to pattern
+        let pattern: Vec<Option<TypedValue>> = query.matchers
+            .iter()
+            .map(|m| {
+                match m {
+                    Matcher::Any => None,
+                    Matcher::Constant(val) => Some(val.clone()),
+                }
+            })
+            .collect();
+
+        let atom = Atom {
+            symbol: query.symbol.to_string(),
+            terms: query.matchers
+                .iter()
+                .map(|_| Term::Variable("_".to_string()))
+                .collect(),
+            sign: true,
+        };
+
+        let results = self.evaluate_subquery(
+            &atom,
+            &pattern,
+            table,
+            &mut seen_queries,
+            0 // Start with depth 0
+        )?;
+
+        Ok(results.into_iter().collect())
+    }
+
+    fn evaluate_subquery(
+        &self,
+        atom: &Atom,
+        pattern: &[Option<TypedValue>],
+        table: &mut SubsumptiveTable,
+        seen_queries: &mut HashSet<(String, Vec<Option<TypedValue>>)>,
+        depth: usize
+    ) -> Result<HashSet<AnonymousGroundAtom>, String> {
+        let indent = "  ".repeat(depth);
+
+        // Check cache first
+        if let Some(cached_results) = table.find_subsuming(&atom.symbol, pattern) {
+            return Ok(cached_results.iter().cloned().collect());
+        }
+
+        let mut all_results = HashSet::new();
+        let query_key = (atom.symbol.clone(), pattern.to_vec());
+
+        // Check for cycles in recursion
+        if seen_queries.contains(&query_key) {
+            return Ok(all_results);
+        }
+        seen_queries.insert(query_key.clone());
+
+        // Process base facts
+        if let Some(facts) = self.processed.inner.get(&atom.symbol) {
+            let matching_facts: HashSet<_> = facts
+                .iter()
+                .filter(|fact| {
+                    fact.iter()
+                        .zip(pattern)
+                        .all(|(val, pattern_val)| {
+                            match pattern_val {
+                                Some(bound_val) => val == bound_val,
+                                None => true,
+                            }
+                        })
+                })
+                .map(|arc_fact| (**arc_fact).clone())
+                .collect();
+            all_results.extend(matching_facts);
+        }
+
+        // Process rules
+        for rule in &self.program.inner {
+            if rule.head.symbol == atom.symbol {
+                let mut rule_results = HashSet::new();
+                self.evaluate_rule_subsumptive(
+                    rule,
+                    pattern,
+                    table,
+                    seen_queries,
+                    &mut rule_results,
+                    depth + 1
+                )?;
+                all_results.extend(rule_results);
+            }
+        }
+
+        seen_queries.remove(&query_key);
+
+        // Cache results if we have any
+        if !all_results.is_empty() {
+            table.insert(&atom.symbol, pattern.to_vec(), all_results.iter().cloned().collect());
+        }
+
+        Ok(all_results)
+    }
 }
 
 #[cfg(test)]
@@ -210,7 +514,8 @@ mod tests {
 
     #[test]
     fn integration_test_insertions_only() {
-        let tc_program = program! {
+        let tc_program =
+            program! {
             tc(?x, ?y) <- [e(?x, ?y)],
             tc(?x, ?z) <- [e(?x, ?y), tc(?y, ?z)],
         };
@@ -219,12 +524,12 @@ mod tests {
         vec![
             vec!["a".into(), "b".into()],
             vec!["b".into(), "c".into()],
-            vec!["c".into(), "d".into()],
+            vec!["c".into(), "d".into()]
         ]
-        .into_iter()
-        .for_each(|edge| {
-            runtime.insert("e", edge);
-        });
+            .into_iter()
+            .for_each(|edge| {
+                runtime.insert("e", edge);
+            });
 
         runtime.poll();
 
@@ -243,21 +548,23 @@ mod tests {
             vec!["a".into(), "c".into()],
             vec!["b".into(), "d".into()],
             // Third iter
-            vec!["a".into(), "d".into()],
+            vec!["a".into(), "d".into()]
         ]
-        .into_iter()
-        .collect();
+            .into_iter()
+            .collect();
         assert_eq!(expected_all, actual_all);
 
-        let actual_all_from_a: HashSet<AnonymousGroundAtom> =
-            runtime.query(&all_from_a).unwrap().collect();
+        let actual_all_from_a: HashSet<AnonymousGroundAtom> = runtime
+            .query(&all_from_a)
+            .unwrap()
+            .collect();
         let expected_all_from_a: HashSet<AnonymousGroundAtom> = vec![
             vec!["a".into(), "b".into()],
             vec!["a".into(), "c".into()],
-            vec!["a".into(), "d".into()],
+            vec!["a".into(), "d".into()]
         ]
-        .into_iter()
-        .collect();
+            .into_iter()
+            .collect();
         assert_eq!(expected_all_from_a, actual_all_from_a);
 
         expected_all.iter().for_each(|fact| {
@@ -274,8 +581,10 @@ mod tests {
         runtime.poll();
         assert!(runtime.safe());
 
-        let actual_all_after_update: HashSet<AnonymousGroundAtom> =
-            runtime.query(&all).unwrap().collect();
+        let actual_all_after_update: HashSet<AnonymousGroundAtom> = runtime
+            .query(&all)
+            .unwrap()
+            .collect();
         let expected_all_after_update: HashSet<AnonymousGroundAtom> = vec![
             vec!["a".into(), "b".into()],
             vec!["b".into(), "c".into()],
@@ -289,26 +598,25 @@ mod tests {
             vec!["d".into(), "e".into()],
             vec!["c".into(), "e".into()],
             vec!["b".into(), "e".into()],
-            vec!["a".into(), "e".into()],
+            vec!["a".into(), "e".into()]
         ]
-        .into_iter()
-        .collect();
+            .into_iter()
+            .collect();
         assert_eq!(expected_all_after_update, actual_all_after_update);
 
-        let actual_all_from_a_after_update: HashSet<AnonymousGroundAtom> =
-            runtime.query(&all_from_a).unwrap().collect();
+        let actual_all_from_a_after_update: HashSet<AnonymousGroundAtom> = runtime
+            .query(&all_from_a)
+            .unwrap()
+            .collect();
         let expected_all_from_a_after_update: HashSet<AnonymousGroundAtom> = vec![
             vec!["a".into(), "b".into()],
             vec!["a".into(), "c".into()],
             vec!["a".into(), "d".into()],
-            vec!["a".into(), "e".into()],
+            vec!["a".into(), "e".into()]
         ]
-        .into_iter()
-        .collect();
-        assert_eq!(
-            expected_all_from_a_after_update,
-            actual_all_from_a_after_update
-        );
+            .into_iter()
+            .collect();
+        assert_eq!(expected_all_from_a_after_update, actual_all_from_a_after_update);
     }
     #[test]
     fn integration_test_deletions() {
@@ -316,7 +624,8 @@ mod tests {
         let all = build_query!(tc(_, _));
         let all_from_a = build_query!(tc("a", _));
 
-        let tc_program = program! {
+        let tc_program =
+            program! {
             tc(?x, ?y) <- [e(?x, ?y)],
             tc(?x, ?z) <- [tc(?x, ?y), tc(?y, ?z)],
         };
@@ -328,12 +637,12 @@ mod tests {
             vec!["a".into(), "e".into()],
             vec!["b".into(), "c".into()],
             vec!["c".into(), "d".into()],
-            vec!["d".into(), "e".into()],
+            vec!["d".into(), "e".into()]
         ]
-        .into_iter()
-        .for_each(|edge| {
-            runtime.insert("e", edge);
-        });
+            .into_iter()
+            .for_each(|edge| {
+                runtime.insert("e", edge);
+            });
 
         runtime.poll();
 
@@ -351,22 +660,24 @@ mod tests {
             // Fourth iter
             vec!["d".into(), "e".into()],
             vec!["c".into(), "e".into()],
-            vec!["b".into(), "e".into()],
+            vec!["b".into(), "e".into()]
         ]
-        .into_iter()
-        .collect();
+            .into_iter()
+            .collect();
         assert_eq!(expected_all, actual_all);
 
-        let actual_all_from_a: HashSet<AnonymousGroundAtom> =
-            runtime.query(&all_from_a).unwrap().collect();
+        let actual_all_from_a: HashSet<AnonymousGroundAtom> = runtime
+            .query(&all_from_a)
+            .unwrap()
+            .collect();
         let expected_all_from_a: HashSet<AnonymousGroundAtom> = vec![
             vec!["a".into(), "b".into()],
             vec!["a".into(), "c".into()],
             vec!["a".into(), "d".into()],
-            vec!["a".into(), "e".into()],
+            vec!["a".into(), "e".into()]
         ]
-        .into_iter()
-        .collect();
+            .into_iter()
+            .collect();
         assert_eq!(expected_all_from_a, actual_all_from_a);
 
         // Update
@@ -377,8 +688,10 @@ mod tests {
         runtime.poll();
         assert!(runtime.safe());
 
-        let actual_all_after_update: HashSet<AnonymousGroundAtom> =
-            runtime.query(&all).unwrap().collect();
+        let actual_all_after_update: HashSet<AnonymousGroundAtom> = runtime
+            .query(&all)
+            .unwrap()
+            .collect();
         let expected_all_after_update: HashSet<AnonymousGroundAtom> = vec![
             vec!["a".into(), "b".into()],
             vec!["b".into(), "c".into()],
@@ -389,31 +702,31 @@ mod tests {
             // Third iter
             vec!["a".into(), "d".into()],
             // This remains
-            vec!["a".into(), "e".into()],
+            vec!["a".into(), "e".into()]
         ]
-        .into_iter()
-        .collect();
+            .into_iter()
+            .collect();
         assert_eq!(expected_all_after_update, actual_all_after_update);
 
-        let actual_all_from_a_after_update: HashSet<AnonymousGroundAtom> =
-            runtime.query(&all_from_a).unwrap().collect();
+        let actual_all_from_a_after_update: HashSet<AnonymousGroundAtom> = runtime
+            .query(&all_from_a)
+            .unwrap()
+            .collect();
         let expected_all_from_a_after_update: HashSet<AnonymousGroundAtom> = vec![
             vec!["a".into(), "b".into()],
             vec!["a".into(), "c".into()],
             vec!["a".into(), "d".into()],
-            vec!["a".into(), "e".into()],
+            vec!["a".into(), "e".into()]
         ]
-        .into_iter()
-        .collect();
-        assert_eq!(
-            expected_all_from_a_after_update,
-            actual_all_from_a_after_update
-        );
+            .into_iter()
+            .collect();
+        assert_eq!(expected_all_from_a_after_update, actual_all_from_a_after_update);
     }
 
     #[test]
     fn integration_test_stratified_evaluation() {
-        let stratified_program = program! {
+        let stratified_program =
+            program! {
             // Stratum 1: Base rule
             base(?x, ?y) <- [edge(?x, ?y)],
 
@@ -439,32 +752,39 @@ mod tests {
         // Query and assert expectations for each stratum
         // Expected results for Stratum 1: `base`
         let base_query = build_query!(base(_, _));
-        let actual_base: HashSet<AnonymousGroundAtom> =
-            runtime.query(&base_query).unwrap().collect();
-        let expected_base: HashSet<AnonymousGroundAtom> =
-            vec![vec!["a".into(), "b".into()], vec!["b".into(), "c".into()]]
-                .into_iter()
-                .collect();
+        let actual_base: HashSet<AnonymousGroundAtom> = runtime
+            .query(&base_query)
+            .unwrap()
+            .collect();
+        let expected_base: HashSet<AnonymousGroundAtom> = vec![
+            vec!["a".into(), "b".into()],
+            vec!["b".into(), "c".into()]
+        ]
+            .into_iter()
+            .collect();
         assert_eq!(expected_base, actual_base);
 
         // Expected results for Stratum 2: `derived`
         let derived_query = build_query!(derived(_, _));
-        let actual_derived: HashSet<AnonymousGroundAtom> =
-            runtime.query(&derived_query).unwrap().collect();
+        let actual_derived: HashSet<AnonymousGroundAtom> = runtime
+            .query(&derived_query)
+            .unwrap()
+            .collect();
         let expected_derived: HashSet<AnonymousGroundAtom> = vec![
             vec!["a".into(), "b".into()],
             vec!["b".into(), "c".into()],
-            vec!["a".into(), "c".into()],
+            vec!["a".into(), "c".into()]
         ]
-        .into_iter()
-        .collect();
+            .into_iter()
+            .collect();
         assert_eq!(expected_derived, actual_derived);
 
         // Expected results for Stratum 3: `top`
         let top_query = build_query!(top(_, _));
         let actual_top: HashSet<AnonymousGroundAtom> = runtime.query(&top_query).unwrap().collect();
-        let expected_top: HashSet<AnonymousGroundAtom> =
-            vec![vec!["a".into(), "c".into()]].into_iter().collect();
+        let expected_top: HashSet<AnonymousGroundAtom> = vec![vec!["a".into(), "c".into()]]
+            .into_iter()
+            .collect();
         assert_eq!(expected_top, actual_top);
 
         // Test deletions to check if stratified rederivation works correctly
@@ -473,15 +793,253 @@ mod tests {
         runtime.poll();
 
         // After deletion, only certain derived facts should remain
-        let actual_derived_after_delete: HashSet<AnonymousGroundAtom> =
-            runtime.query(&derived_query).unwrap().collect();
-        let expected_derived_after_delete: HashSet<AnonymousGroundAtom> =
-            vec![vec!["a".into(), "b".into()]].into_iter().collect();
+        let actual_derived_after_delete: HashSet<AnonymousGroundAtom> = runtime
+            .query(&derived_query)
+            .unwrap()
+            .collect();
+        let expected_derived_after_delete: HashSet<AnonymousGroundAtom> = vec![
+            vec!["a".into(), "b".into()]
+        ]
+            .into_iter()
+            .collect();
         assert_eq!(expected_derived_after_delete, actual_derived_after_delete);
 
-        let actual_top_after_delete: HashSet<AnonymousGroundAtom> =
-            runtime.query(&top_query).unwrap().collect();
+        let actual_top_after_delete: HashSet<AnonymousGroundAtom> = runtime
+            .query(&top_query)
+            .unwrap()
+            .collect();
         let expected_top_after_delete: HashSet<AnonymousGroundAtom> = HashSet::new();
         assert_eq!(expected_top_after_delete, actual_top_after_delete);
     }
+
+    #[test]
+    fn test_query_program_basic_ancestor() {
+        // Set up a simple ancestor program
+        let program =
+            program! {
+            ancestor(?x, ?y) <- [parent(?x, ?y)],
+            ancestor(?x, ?z) <- [parent(?x, ?y), ancestor(?y, ?z)]
+        };
+
+        // Create runtime and add base facts
+        let mut runtime = MicroRuntime::new(program.clone());
+        runtime.insert("parent", vec!["john".into(), "bob".into()]);
+        runtime.insert("parent", vec!["bob".into(), "mary".into()]);
+
+        // Query for ancestors of john
+        let query = build_query!(ancestor("john", _));
+        let query_temp = build_query!(ancestor_bf("john", _));
+        let results: HashSet<_> = runtime
+            .query_program(&query, &query_temp, program, "Bottom-up")
+            .unwrap()
+            .collect();
+
+        // Expected results - john is ancestor of both bob and mary
+        let expected: HashSet<_> = vec![
+            vec!["john".into(), "bob".into()],
+            vec!["john".into(), "mary".into()]
+        ]
+            .into_iter()
+            .collect();
+
+        assert_eq!(expected, results);
+    }
+
+    #[test]
+    fn test_query_program_ff() {
+        // Set up a simple ancestor program
+        let program =
+            program! {
+        tc(?x, ?y) <- [e(?x, ?y)],
+        tc(?x, ?z) <- [e(?x, ?y), tc(?y, ?z)]
+    };
+
+        // Create runtime and add base facts
+        let mut runtime = MicroRuntime::new(program.clone());
+        runtime.insert("e", vec!["john".into(), "bob".into()]);
+        runtime.insert("e", vec!["bob".into(), "mary".into()]);
+
+        // Query for ancestors of john
+        let query = build_query!(tc(_, _));
+        let query_temp = build_query!(tc_ff(_, _));
+        let results: HashSet<_> = runtime
+            .query_program(&query, &query_temp, program, "Bottom-up")
+            .unwrap()
+            .collect();
+
+        // Expected results - john is ancestor of both bob and mary
+        let expected: HashSet<_> = vec![
+            vec!["john".into(), "bob".into()],
+            vec!["bob".into(), "mary".into()],
+            vec!["john".into(), "mary".into()]
+        ]
+            .into_iter()
+            .collect();
+
+        assert_eq!(expected, results);
+    }
+
+    #[test]
+    fn test_query_program_basic_ancestor_top_down() {
+        // Set up a simple ancestor program
+        let program =
+            program! {
+            ancestor(?x, ?y) <- [parent(?x, ?y)],
+            ancestor(?x, ?z) <- [parent(?x, ?y), ancestor(?y, ?z)]
+        };
+
+        // Create runtime and add base facts
+        let mut runtime = MicroRuntime::new(program.clone());
+        runtime.insert("parent", vec!["john".into(), "bob".into()]);
+        runtime.insert("parent", vec!["bob".into(), "mary".into()]);
+
+        // Query for ancestors of john
+        let query = build_query!(ancestor("john", _));
+        let results: HashSet<_> = runtime
+            .query_program(&query, &query, program.clone(), "Top-down")
+            .unwrap()
+            .collect();
+
+        // Expected results - john is ancestor of both bob and mary
+        let expected: HashSet<_> = vec![
+            vec!["john".into(), "bob".into()],
+            vec!["john".into(), "mary".into()]
+        ]
+            .into_iter()
+            .collect();
+
+        assert_eq!(expected, results);
+
+        // Test subsumption - query for specific case should reuse previous results
+        let specific_query = build_query!(ancestor("john", "mary"));
+        let specific_results: HashSet<_> = runtime
+            .query_program(&specific_query, &specific_query, program, "Top-down")
+            .unwrap()
+            .collect();
+
+        let expected_specific: HashSet<_> = vec![vec!["john".into(), "mary".into()]]
+            .into_iter()
+            .collect();
+
+        assert_eq!(expected_specific, specific_results);
+    }
+
+    #[test]
+    fn test_query_basic_ancestor() {
+        // Set up a simple ancestor program
+        let program =
+            program! {
+            ancestor(?x, ?y) <- [parent(?x, ?y)],
+            ancestor(?x, ?z) <- [parent(?x, ?y), ancestor(?y, ?z)]
+        };
+
+        // Create runtime and add base facts
+        let mut runtime = MicroRuntime::new(program.clone());
+        runtime.insert("parent", vec!["john".into(), "bob".into()]);
+        runtime.insert("parent", vec!["bob".into(), "mary".into()]);
+
+        runtime.poll();
+        // Query for ancestors of john
+        let query = build_query!(ancestor("john", _));
+        let results: HashSet<_> = runtime.query(&query).unwrap().collect();
+
+        // Expected results - john is ancestor of both bob and mary
+        let expected: HashSet<_> = vec![
+            vec!["john".into(), "bob".into()],
+            vec!["john".into(), "mary".into()]
+        ]
+            .into_iter()
+            .collect();
+
+        assert_eq!(expected, results);
+    }
+
+    /* 
+    #[test]
+    fn test_query_program_same_generation() {
+        let program =
+            program! {
+            sg(?x, ?y) <- [flat(?x, ?y)],
+            sg(?x, ?y) <- [up(?x, ?z1), sg(?z1, ?z2), down(?z2, ?y)]
+        };
+
+        let mut runtime = MicroRuntime::new(program.clone());
+
+        // Set up family tree facts
+        runtime.insert("up", vec!["b1".into(), "a1".into()]);
+        runtime.insert("up", vec!["b2".into(), "a1".into()]);
+        runtime.insert("up", vec!["b3".into(), "a2".into()]);
+        runtime.insert("up", vec!["b4".into(), "a2".into()]);
+        runtime.insert("flat", vec!["a1".into(), "a2".into()]);
+        runtime.insert("down", vec!["a1".into(), "b1".into()]);
+        runtime.insert("down", vec!["a1".into(), "b2".into()]);
+        runtime.insert("down", vec!["a2".into(), "b3".into()]);
+        runtime.insert("down", vec!["a2".into(), "b4".into()]);
+
+        // Query for nodes in same generation as b1
+        let query = build_query!(sg("b1", _));
+        let results: HashSet<_> = runtime.query_program(&query, program).unwrap().collect();
+
+        // b1 should be in same generation as b2, b3, and b4
+        let expected: HashSet<_> = vec![
+            vec!["b1".into(), "b2".into()],
+            vec!["b1".into(), "b3".into()],
+            vec!["b1".into(), "b4".into()]
+        ]
+            .into_iter()
+            .collect();
+
+        assert_eq!(expected, results);
+    }
+
+    #[test]
+    fn test_query_program_empty_result() {
+        let program =
+            program! {
+            path(?x, ?y) <- [edge(?x, ?y)],
+            path(?x, ?z) <- [edge(?x, ?y), path(?y, ?z)]
+        };
+
+        let mut runtime = MicroRuntime::new(program.clone());
+
+        // Query with no matching facts
+        let query = build_query!(path("nonexistent", _));
+        let results: Vec<_> = runtime.query_program(&query, program).unwrap().collect();
+
+        assert!(results.is_empty());
+    }
+
+    #[test]
+    fn test_query_program_magic_sets_optimization() {
+        // Program that would be inefficient without magic sets
+        let program =
+            program! {
+            path(?x, ?y) <- [edge(?x, ?y)],
+            path(?x, ?z) <- [edge(?x, ?y), path(?y, ?z)]
+        };
+
+        let mut runtime = MicroRuntime::new(program.clone());
+
+        // Create a long chain a->b->c->d
+        runtime.insert("edge", vec!["a".into(), "b".into()]);
+        runtime.insert("edge", vec!["b".into(), "c".into()]);
+        runtime.insert("edge", vec!["c".into(), "d".into()]);
+        runtime.insert("edge", vec!["x".into(), "y".into()]); // Unrelated edge
+
+        // Query paths from 'a'
+        let query = build_query!(path("a", _));
+        let results: HashSet<_> = runtime.query_program(&query, program).unwrap().collect();
+
+        // Should only compute paths starting from 'a'
+        let expected: HashSet<_> = vec![
+            vec!["a".into(), "b".into()],
+            vec!["a".into(), "c".into()],
+            vec!["a".into(), "d".into()]
+        ]
+            .into_iter()
+            .collect();
+
+        assert_eq!(expected, results);
+    }
+    */
 }

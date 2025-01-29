@@ -1,11 +1,11 @@
 use crate::evaluation::spj_processor::RuleEvaluator;
-use crate::helpers::helpers::{OVERDELETION_PREFIX, REDERIVATION_PREFIX};
-use ahash::{HashMap, HashMapExt};
-use datalog_syntax::{AnonymousGroundAtom, Program};
+use crate::helpers::helpers::{ OVERDELETION_PREFIX, REDERIVATION_PREFIX };
+use ahash::{ HashMap, HashMapExt };
+use datalog_syntax::{ AnonymousGroundAtom, Program };
 use indexmap::IndexSet;
 use std::sync::Arc;
 
-use super::index_storage::{EphemeralValue, IndexStorage};
+use super::index_storage::{ EphemeralValue, IndexStorage };
 pub type FactStorage = IndexSet<Arc<AnonymousGroundAtom>, ahash::RandomState>;
 #[derive(Default)]
 pub struct RelationStorage {
@@ -22,10 +22,9 @@ impl RelationStorage {
         return rel.drain(..).collect();
     }
     pub fn drain_all_relations(
-        &mut self,
+        &mut self
     ) -> impl Iterator<Item = (String, Vec<Arc<AnonymousGroundAtom>>)> + '_ {
-        let relations_to_be_drained: Vec<_> = self
-            .inner
+        let relations_to_be_drained: Vec<_> = self.inner
             .iter()
             .map(|(symbol, _)| symbol.clone())
             .collect();
@@ -42,23 +41,17 @@ impl RelationStorage {
         })
     }
     pub fn overdelete(&mut self) {
-        let overdeletion_relations: Vec<_> = self
-            .inner
+        let overdeletion_relations: Vec<_> = self.inner
             .iter()
             .filter(|(symbol, _)| symbol.starts_with(OVERDELETION_PREFIX))
             .map(|(symbol, _facts)| {
-                (
-                    symbol.clone(),
-                    symbol
-                        .strip_prefix(&OVERDELETION_PREFIX)
-                        .unwrap()
-                        .to_string(),
-                )
+                (symbol.clone(), symbol.strip_prefix(&OVERDELETION_PREFIX).unwrap().to_string())
             })
             .collect();
 
-        overdeletion_relations.into_iter().for_each(
-            |(overdeletion_symbol, actual_relation_symbol)| {
+        overdeletion_relations
+            .into_iter()
+            .for_each(|(overdeletion_symbol, actual_relation_symbol)| {
                 let overdeletion_relation = self.inner.remove(&overdeletion_symbol).unwrap();
                 let actual_relation = self.inner.get_mut(&actual_relation_symbol).unwrap();
 
@@ -67,37 +60,28 @@ impl RelationStorage {
                 });
 
                 // We insert it back because it is necessary for rederivation.
-                self.inner
-                    .insert(overdeletion_symbol, overdeletion_relation);
-            },
-        );
+                self.inner.insert(overdeletion_symbol, overdeletion_relation);
+            });
     }
     pub fn rederive(&mut self) {
-        let rederivation_relations: Vec<_> = self
-            .inner
+        let rederivation_relations: Vec<_> = self.inner
             .iter()
             .filter(|(symbol, _)| symbol.starts_with(REDERIVATION_PREFIX))
             .map(|(symbol, _facts)| {
-                (
-                    symbol.clone(),
-                    symbol
-                        .strip_prefix(&REDERIVATION_PREFIX)
-                        .unwrap()
-                        .to_string(),
-                )
+                (symbol.clone(), symbol.strip_prefix(&REDERIVATION_PREFIX).unwrap().to_string())
             })
             .collect();
 
-        rederivation_relations.into_iter().for_each(
-            |(rederivation_symbol, actual_relation_symbol)| {
+        rederivation_relations
+            .into_iter()
+            .for_each(|(rederivation_symbol, actual_relation_symbol)| {
                 let rederivation_relation = self.inner.remove(&rederivation_symbol).unwrap();
                 let actual_relation = self.inner.get_mut(&actual_relation_symbol).unwrap();
 
                 rederivation_relation.into_iter().for_each(|atom| {
                     actual_relation.insert(atom);
                 });
-            },
-        );
+            });
     }
     pub fn clear_relation(&mut self, relation_symbol: &str) {
         self.inner.get_mut(relation_symbol).unwrap().clear();
@@ -115,7 +99,7 @@ impl RelationStorage {
     pub fn insert_registered(
         &mut self,
         relation_symbol: &str,
-        registrations: impl Iterator<Item = Arc<AnonymousGroundAtom>>,
+        registrations: impl Iterator<Item = Arc<AnonymousGroundAtom>>
     ) {
         let mut hashes = vec![];
 
@@ -129,15 +113,14 @@ impl RelationStorage {
             let mut fresh_fact_storage = FactStorage::default();
             fresh_fact_storage.extend(hashes);
 
-            self.inner
-                .insert(relation_symbol.to_string(), fresh_fact_storage);
+            self.inner.insert(relation_symbol.to_string(), fresh_fact_storage);
         }
     }
 
     pub fn insert_all(
         &mut self,
         relation_symbol: &str,
-        facts: impl Iterator<Item = Arc<AnonymousGroundAtom>>,
+        facts: impl Iterator<Item = Arc<AnonymousGroundAtom>>
     ) {
         if let Some(relation) = self.inner.get_mut(relation_symbol) {
             relation.extend(facts.into_iter())
@@ -145,8 +128,7 @@ impl RelationStorage {
             let mut fresh_fact_storage = FactStorage::default();
             fresh_fact_storage.extend(facts.into_iter());
 
-            self.inner
-                .insert(relation_symbol.to_string(), fresh_fact_storage);
+            self.inner.insert(relation_symbol.to_string(), fresh_fact_storage);
         }
     }
     pub fn insert(&mut self, relation_symbol: &str, ground_atom: AnonymousGroundAtom) -> bool {
@@ -157,8 +139,7 @@ impl RelationStorage {
         let mut fresh_fact_storage = FactStorage::default();
         fresh_fact_storage.insert(Arc::new(ground_atom));
 
-        self.inner
-            .insert(relation_symbol.to_string(), fresh_fact_storage);
+        self.inner.insert(relation_symbol.to_string(), fresh_fact_storage);
 
         true
     }
@@ -181,7 +162,7 @@ impl RelationStorage {
     pub fn materialize_nonrecursive_delta_program<'a>(
         &mut self,
         nonrecursive_program: &Program,
-        index_storage: &mut IndexStorage,
+        index_storage: &mut IndexStorage
     ) {
         let mut new_diff: HashMap<String, Vec<EphemeralValue>> = HashMap::new();
 
@@ -201,10 +182,10 @@ impl RelationStorage {
                 .collect();
 
             self.insert_all(&delta_relation_symbol, diff.clone().into_iter());
-            new_diff.entry(delta_relation_symbol).or_default().extend(
-                diff.into_iter()
-                    .map(|x| super::index_storage::EphemeralValue::FactRef(x)),
-            );
+            new_diff
+                .entry(delta_relation_symbol)
+                .or_default()
+                .extend(diff.into_iter().map(|x| super::index_storage::EphemeralValue::FactRef(x)));
         }
 
         index_storage.inner.extend(index_storage.diff.drain());
@@ -213,12 +194,11 @@ impl RelationStorage {
     pub fn materialize_recursive_delta_program<'a>(
         &mut self,
         recursive_program: &Program,
-        index_storage: &mut IndexStorage,
+        index_storage: &mut IndexStorage
     ) {
         let mut new_diff: HashMap<String, Vec<EphemeralValue>> = HashMap::new();
 
-        let evaluation_setup: Vec<_> = recursive_program
-            .inner
+        let evaluation_setup: Vec<_> = recursive_program.inner
             .iter()
             .map(|rule| (&rule.head.symbol, RuleEvaluator::new(self, rule)))
             .collect();
@@ -231,8 +211,10 @@ impl RelationStorage {
             })
             .collect::<Vec<_>>();
 
-        evaluation.into_iter().enumerate().for_each(
-            |(_idx, (delta_relation_symbol, current_delta_evaluation))| {
+        evaluation
+            .into_iter()
+            .enumerate()
+            .for_each(|(_idx, (delta_relation_symbol, current_delta_evaluation))| {
                 let curr = self.get_relation(delta_relation_symbol);
 
                 let diff: FactStorage = current_delta_evaluation
@@ -246,18 +228,19 @@ impl RelationStorage {
                     .entry(delta_relation_symbol.clone())
                     .or_default()
                     .extend(
-                        diff.into_iter()
-                            .map(|x| super::index_storage::EphemeralValue::FactRef(x)),
+                        diff.into_iter().map(|x| super::index_storage::EphemeralValue::FactRef(x))
                     );
-            },
-        );
+            });
 
         index_storage.inner.extend(index_storage.diff.drain());
         index_storage.diff = new_diff;
     }
 
     pub fn len(&self) -> usize {
-        return self.inner.iter().map(|(_symbol, facts)| facts.len()).sum();
+        return self.inner
+            .iter()
+            .map(|(_symbol, facts)| facts.len())
+            .sum();
     }
 
     pub fn is_empty(&self) -> bool {
