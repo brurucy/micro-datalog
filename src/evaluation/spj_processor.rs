@@ -409,7 +409,7 @@ impl<'a> RuleEvaluator<'a> {
                     let join_result_name = stringify_join(operation);
                     let mut join_key_positions = None;
                     if let Some(left_relation) = left {
-                        if let Some(left_allocation) = left_relation.get(0) {
+                        if let Some(left_allocation) = left_relation.get(0).or_else(|| left_delta.and_then(|ld| ld.get(0))) {
                             match left_allocation {
                                 EphemeralValue::JoinResult(product) => {
                                     join_key_positions = Some(

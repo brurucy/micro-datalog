@@ -484,4 +484,57 @@ mod tests {
         let expected_top_after_delete: HashSet<AnonymousGroundAtom> = HashSet::new();
         assert_eq!(expected_top_after_delete, actual_top_after_delete);
     }
+
+    #[test]
+    fn test_query_program_same_generation_top_down() {
+        // Test the same-generation problem with subsumptive tabling
+        // sg(X,Y) means X and Y are in the same generation
+        // For query sg(b1,Y), the evaluation should go:
+        // 1. Go up from b1 to a1
+        // 2. Look for sg(a1,?) matches, which finds a2 via flat
+        // 3. Go down from a2 to b3,b4
+        let program = program! {
+            sg(?x, ?y) <- [flat(?x, ?y)],
+            sg(?y, ?x) <- [sg(?x, ?y)],
+            sg(?x, ?y) <- [up(?x, ?z1), down(?z1, ?y)],
+            sg(?x, ?y) <- [up(?x, ?z1), sg(?z1, ?z2), down(?z2, ?y)]
+        };
+
+        let mut runtime = MicroRuntime::new(program.clone());
+
+        // Set up tree structure:
+        //       a1    a2   (flat connects these)
+        //      /  \  /  \
+        //    b1  b2 b3  b4
+        runtime.insert("up", vec!["b1".into(), "a1".into()]); // b1 up to a1
+        runtime.insert("up", vec!["b2".into(), "a1".into()]); // b2 up to a1
+        runtime.insert("up", vec!["b3".into(), "a2".into()]); // b3 up to a2
+        runtime.insert("up", vec!["b4".into(), "a2".into()]); // b4 up to a2
+
+        // Direct same-generation relationships
+        runtime.insert("flat", vec!["a1".into(), "a2".into()]); // a1 same gen as a2
+
+        runtime.insert("down", vec!["a1".into(), "b1".into()]); // a1 down to b1
+        runtime.insert("down", vec!["a1".into(), "b2".into()]); // a1 down to b2
+        runtime.insert("down", vec!["a2".into(), "b3".into()]); // a2 down to b3
+        runtime.insert("down", vec!["a2".into(), "b4".into()]); // a2 down to b4
+
+        runtime.poll();
+
+        // Query for nodes in same generation as b1 (should find b2, b3, b4)
+        let query = build_query!(sg("b1", _));
+        let results: HashSet<_> = runtime.query(&query).unwrap().collect();
+
+        // b1 should be in same generation as b2, b3, and b4
+        let expected: HashSet<_> = vec![
+            vec!["b1".into(), "b2".into()], // Same parent a1
+            vec!["b1".into(), "b3".into()], // Through flat a1-a2
+            vec!["b1".into(), "b4".into()], // Through flat a1-a2
+            vec!["b1".into(), "b1".into()], // Every node is in same gen with itself
+        ]
+        .into_iter()
+        .collect();
+
+        assert_eq!(expected, results);
+    }
 }
