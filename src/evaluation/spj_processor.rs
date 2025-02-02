@@ -325,6 +325,10 @@ fn do_join(
                 }
                 EphemeralValue::JoinResult(product) => {
                     if let Some(join_key_positions) = join_key_positions {
+                        let current_comparison = join_key_positions.into_iter().map(|((left_fact_idx, left_column), right_column)| {
+                            (product[*left_fact_idx][*left_column].clone(), right_fact[*right_column].clone())
+                        }).collect::<Vec<_>>();
+
                         if join_key_positions.into_iter().all(
                             |((left_fact_idx, left_column), right_column)| {
                                 product[*left_fact_idx][*left_column] == right_fact[*right_column]
@@ -409,7 +413,7 @@ impl<'a> RuleEvaluator<'a> {
                     let join_result_name = stringify_join(operation);
                     let mut join_key_positions = None;
                     if let Some(left_relation) = left {
-                        if let Some(left_allocation) = left_relation.get(0) {
+                        if let Some(left_allocation) = left_relation.get(0).or_else(|| left_delta.and_then(|ld| ld.get(0))) {
                             match left_allocation {
                                 EphemeralValue::JoinResult(product) => {
                                     join_key_positions = Some(
