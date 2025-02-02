@@ -494,13 +494,10 @@ mod tests {
         // 2. Look for sg(a1,?) matches, which finds a2 via flat
         // 3. Go down from a2 to b3,b4
         let program = program! {
-            // Base case: nodes we know are in same generation
             sg(?x, ?y) <- [flat(?x, ?y)],
-            // Recursive case: two nodes are in same generation if:
-            // - x goes up to z1
-            // - z1 and z2 are in same generation
-            // - z2 goes down to y
-            sg(?x, ?y) <- [up(?x, ?z1), sg(?z1, ?z2), flat(?z2, ?z3), sg(?z3, ?z4), down(?z4, ?y)]
+            sg(?y, ?x) <- [sg(?x, ?y)],
+            sg(?x, ?y) <- [up(?x, ?z1), down(?z1, ?y)],
+            sg(?x, ?y) <- [up(?x, ?z1), sg(?z1, ?z2), down(?z2, ?y)]
         };
 
         let mut runtime = MicroRuntime::new(program.clone());
@@ -525,7 +522,7 @@ mod tests {
         runtime.poll();
 
         // Query for nodes in same generation as b1 (should find b2, b3, b4)
-        let query = build_query!(sg(_, _));
+        let query = build_query!(sg("b1", _));
         let results: HashSet<_> = runtime.query(&query).unwrap().collect();
 
         // b1 should be in same generation as b2, b3, and b4
