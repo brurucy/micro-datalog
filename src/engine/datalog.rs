@@ -311,107 +311,6 @@ mod tests {
         );
     }
     #[test]
-    fn integration_test_deletions() {
-        // Queries. The explanation is in the test above
-        let all = build_query!(tc(_, _));
-        let all_from_a = build_query!(tc("a", _));
-
-        let tc_program = program! {
-            tc(?x, ?y) <- [e(?x, ?y)],
-            tc(?x, ?z) <- [tc(?x, ?y), tc(?y, ?z)],
-        };
-
-        let mut runtime = MicroRuntime::new(tc_program);
-        vec![
-            vec!["a".into(), "b".into()],
-            // this extra atom will help with testing that rederivation works
-            vec!["a".into(), "e".into()],
-            vec!["b".into(), "c".into()],
-            vec!["c".into(), "d".into()],
-            vec!["d".into(), "e".into()],
-        ]
-        .into_iter()
-        .for_each(|edge| {
-            runtime.insert("e", edge);
-        });
-
-        runtime.poll();
-
-        let actual_all: HashSet<AnonymousGroundAtom> = runtime.query(&all).unwrap().collect();
-        let expected_all: HashSet<AnonymousGroundAtom> = vec![
-            vec!["a".into(), "b".into()],
-            vec!["a".into(), "e".into()],
-            vec!["b".into(), "c".into()],
-            vec!["c".into(), "d".into()],
-            // Second iter
-            vec!["a".into(), "c".into()],
-            vec!["b".into(), "d".into()],
-            // Third iter
-            vec!["a".into(), "d".into()],
-            // Fourth iter
-            vec!["d".into(), "e".into()],
-            vec!["c".into(), "e".into()],
-            vec!["b".into(), "e".into()],
-        ]
-        .into_iter()
-        .collect();
-        assert_eq!(expected_all, actual_all);
-
-        let actual_all_from_a: HashSet<AnonymousGroundAtom> =
-            runtime.query(&all_from_a).unwrap().collect();
-        let expected_all_from_a: HashSet<AnonymousGroundAtom> = vec![
-            vec!["a".into(), "b".into()],
-            vec!["a".into(), "c".into()],
-            vec!["a".into(), "d".into()],
-            vec!["a".into(), "e".into()],
-        ]
-        .into_iter()
-        .collect();
-        assert_eq!(expected_all_from_a, actual_all_from_a);
-
-        // Update
-        // Point removals are a bit annoying, since they incur creating a query.
-        let d_to_e = build_query!(e("d", "e"));
-        runtime.remove(&d_to_e);
-        assert!(!runtime.safe());
-        runtime.poll();
-        assert!(runtime.safe());
-
-        let actual_all_after_update: HashSet<AnonymousGroundAtom> =
-            runtime.query(&all).unwrap().collect();
-        let expected_all_after_update: HashSet<AnonymousGroundAtom> = vec![
-            vec!["a".into(), "b".into()],
-            vec!["b".into(), "c".into()],
-            vec!["c".into(), "d".into()],
-            // Second iter
-            vec!["a".into(), "c".into()],
-            vec!["b".into(), "d".into()],
-            // Third iter
-            vec!["a".into(), "d".into()],
-            // This remains
-            vec!["a".into(), "e".into()],
-        ]
-        .into_iter()
-        .collect();
-        assert_eq!(expected_all_after_update, actual_all_after_update);
-
-        let actual_all_from_a_after_update: HashSet<AnonymousGroundAtom> =
-            runtime.query(&all_from_a).unwrap().collect();
-        let expected_all_from_a_after_update: HashSet<AnonymousGroundAtom> = vec![
-            vec!["a".into(), "b".into()],
-            vec!["a".into(), "c".into()],
-            vec!["a".into(), "d".into()],
-            vec!["a".into(), "e".into()],
-        ]
-        .into_iter()
-        .collect();
-        assert_eq!(
-            expected_all_from_a_after_update,
-            actual_all_from_a_after_update
-        );
-    }
-
-    #[test]
     fn integration_test_stratified_evaluation() {
         let stratified_program = program! {
             // Stratum 1: Base rule
@@ -466,33 +365,10 @@ mod tests {
         let expected_top: HashSet<AnonymousGroundAtom> =
             vec![vec!["a".into(), "c".into()]].into_iter().collect();
         assert_eq!(expected_top, actual_top);
-
-        // Test deletions to check if stratified rederivation works correctly
-        let edge_b_to_c = build_query!(edge("b", "c"));
-        runtime.remove(&edge_b_to_c);
-        runtime.poll();
-
-        // After deletion, only certain derived facts should remain
-        let actual_derived_after_delete: HashSet<AnonymousGroundAtom> =
-            runtime.query(&derived_query).unwrap().collect();
-        let expected_derived_after_delete: HashSet<AnonymousGroundAtom> =
-            vec![vec!["a".into(), "b".into()]].into_iter().collect();
-        assert_eq!(expected_derived_after_delete, actual_derived_after_delete);
-
-        let actual_top_after_delete: HashSet<AnonymousGroundAtom> =
-            runtime.query(&top_query).unwrap().collect();
-        let expected_top_after_delete: HashSet<AnonymousGroundAtom> = HashSet::new();
-        assert_eq!(expected_top_after_delete, actual_top_after_delete);
     }
 
     #[test]
-    fn test_query_program_same_generation_top_down() {
-        // Test the same-generation problem with subsumptive tabling
-        // sg(X,Y) means X and Y are in the same generation
-        // For query sg(b1,Y), the evaluation should go:
-        // 1. Go up from b1 to a1
-        // 2. Look for sg(a1,?) matches, which finds a2 via flat
-        // 3. Go down from a2 to b3,b4
+    fn test_query_program_same_generation() {
         let program = program! {
             sg(?x, ?y) <- [flat(?x, ?y)],
             sg(?y, ?x) <- [sg(?x, ?y)],

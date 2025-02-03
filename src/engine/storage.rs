@@ -16,10 +16,8 @@ impl RelationStorage {
     pub fn get_relation(&self, relation_symbol: &str) -> &FactStorage {
         return self.inner.get(relation_symbol).unwrap();
     }
-    pub fn drain_relation(&mut self, relation_symbol: &str) -> Vec<Arc<AnonymousGroundAtom>> {
-        let rel = self.inner.get_mut(relation_symbol).unwrap();
-
-        return rel.drain(..).collect();
+    pub fn get_relation_safe(&self, relation_symbol: &str) -> Option<&FactStorage> {
+        return self.inner.get(relation_symbol);
     }
     pub fn drain_all_relations(
         &mut self,
@@ -252,8 +250,13 @@ impl RelationStorage {
             },
         );
 
-        index_storage.inner.extend(index_storage.diff.drain());
+        //println!("==Diff size: {:?}", index_storage.diff.iter().map(|(_, diff)| diff.len()).sum::<usize>());
+        for (symbol, diff) in index_storage.diff.drain() {
+            index_storage.inner.entry(symbol).or_default().extend(diff);
+        }
+
         index_storage.diff = new_diff;
+        //println!("==New diff size: {:?}", index_storage.diff.iter().map(|(_, diff)| diff.len()).sum::<usize>());
     }
 
     pub fn len(&self) -> usize {
