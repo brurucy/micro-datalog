@@ -1,49 +1,24 @@
-use crate::engine::{index_storage::{EphemeralValue, IndexStorage}, storage::RelationStorage};
+use crate::engine::index_storage::IndexStorage;
+use crate::engine::storage::RelationStorage;
 use datalog_syntax::Program;
-use indexmap::IndexSet;
 
-use super::spj_processor::Stack;
 
 pub fn semi_naive_evaluation(
     relation_storage: &mut RelationStorage,
     nonrecursive_program: &Program,
     recursive_program: &Program,
 ) {
-    let mut index_storage = IndexStorage::default();
-    let nonrecursive_stack = nonrecursive_program.inner.iter().map(|r| Stack::from(r.clone())).collect::<Vec<_>>();
-    let recursive_stack = recursive_program.inner.iter().map(|r| Stack::from(r.clone())).collect::<Vec<_>>();
+    let mut index_storage = IndexStorage::from((nonrecursive_program, recursive_program, &*relation_storage));
 
-    let nonrecursive_join_keys = nonrecursive_stack.iter().flat_map(|s| s.get_all_join_keys()).collect::<IndexSet<_>>();
-    let recursive_join_keys = recursive_stack.iter().flat_map(|s| s.get_all_join_keys()).collect::<IndexSet<_>>();
-
-    let all_join_keys = nonrecursive_join_keys.union(&recursive_join_keys).collect::<IndexSet<_>>();
-
-    for (rel_name, join_keys) in all_join_keys {
-        println!("borrowing {:?} with {:?}", rel_name, join_keys);
-        if let Some(relation) = relation_storage.get_relation_safe(&rel_name) {
-            index_storage.borrow_all(&rel_name, relation.into_iter().map(|f| EphemeralValue::FactRef(f.clone())), Some(join_keys.clone()));
-        }
-    }
-    
     relation_storage
         .materialize_nonrecursive_delta_program(nonrecursive_program, &mut index_storage);
 
-    println!("==Nonrecursive delta program");
-    println!("===Index storage size: {:?}", index_storage.inner.iter().map(|(_, v)| v.len()).sum::<usize>());
-    println!("===Diff size: {:?}", index_storage.diff.iter().map(|(_, v)| v.len()).sum::<usize>());
-
-
     loop {
-        let previous_non_delta_fact_count = relation_storage.len();
-
+        let previous_facts_count = relation_storage.len();
         relation_storage.materialize_recursive_delta_program(recursive_program, &mut index_storage);
-        println!("==Recursive delta program");
-        println!("===Index storage size: {:?}", index_storage.inner.iter().map(|(_, v)| v.len()).sum::<usize>());
-        println!("===Diff size: {:?}", index_storage.diff.iter().map(|(_, v)| v.len()).sum::<usize>());
+        let current_facts_count = relation_storage.len();
 
-        let current_non_delta_fact_count = relation_storage.len();
-
-        let new_fact_count = current_non_delta_fact_count - previous_non_delta_fact_count;
+        let new_fact_count = current_facts_count - previous_facts_count;
 
         if new_fact_count == 0 {
             return;

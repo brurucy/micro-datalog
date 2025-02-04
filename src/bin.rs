@@ -41,7 +41,7 @@ fn main() {
         let from: usize = triple[0].parse().unwrap();
         let to: usize = triple[1].parse().unwrap();
 
-        micro_runtime.insert("e", vec![from.into(), to.into()]);
+        micro_runtime.insert("e", (from, to));
         crepe_runtime.e.push(E(from, to));
         ascnt_runtime.e.push((from, to));
     });

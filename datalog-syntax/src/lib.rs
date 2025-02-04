@@ -41,6 +41,33 @@ impl From<bool> for TypedValue {
     }
 }
 
+impl Into<usize> for TypedValue {
+    fn into(self) -> usize {
+        match self {
+            TypedValue::Int(x) => x,
+            _ => unreachable!()
+        }
+    }
+}
+
+impl Into<bool> for TypedValue {
+    fn into(self) -> bool {
+        match self {
+            TypedValue::Bool(x) => x,
+            _ => unreachable!()
+        }
+    }
+}
+
+impl Into<String> for TypedValue {
+    fn into(self) -> String {
+        match self {
+            TypedValue::Str(x) => x,
+            _ => unreachable!()
+        }
+    }
+}
+
 pub type Variable = String;
 
 #[derive(Ord, PartialOrd, Eq, PartialEq, Clone, Hash)]
@@ -59,6 +86,118 @@ impl Debug for Term {
 }
 
 pub type AnonymousGroundAtom = Vec<TypedValue>;
+
+pub struct Fact(pub AnonymousGroundAtom);
+
+impl<T> From<(T,)> for Fact
+where
+    T: Into<TypedValue>,
+{
+    fn from(value: (T,)) -> Self {
+        Fact(vec![value.0.into()])
+    }
+}
+
+impl<T, R> From<(T, R)> for Fact
+where
+    T: Into<TypedValue>,
+    R: Into<TypedValue>,
+{
+    fn from(value: (T, R)) -> Self {
+        Fact(vec![value.0.into(), value.1.into()])
+    }
+}
+
+impl<T, R, S> From<(T, R, S)> for Fact
+where
+    T: Into<TypedValue>,
+    R: Into<TypedValue>,
+    S: Into<TypedValue>,
+{
+    fn from(value: (T, R, S)) -> Self {
+        Fact(vec![value.0.into(), value.1.into(), value.2.into()])
+    }
+}
+
+impl<T, R, S, U> From<(T, R, S, U)> for Fact
+where
+    T: Into<TypedValue>,
+    R: Into<TypedValue>,
+    S: Into<TypedValue>,
+    U: Into<TypedValue>,
+{
+    fn from(value: (T, R, S, U)) -> Self {
+        Fact(vec![value.0.into(), value.1.into(), value.2.into(), value.3.into()])
+    }
+}
+
+impl<T, R, S, U, V> From<(T, R, S, U, V)> for Fact
+where
+    T: Into<TypedValue>,
+    R: Into<TypedValue>,
+    S: Into<TypedValue>,
+    U: Into<TypedValue>,
+    V: Into<TypedValue>,
+{
+    fn from(value: (T, R, S, U, V)) -> Self {
+        Fact(vec![value.0.into(), value.1.into(), value.2.into(), value.3.into(), value.4.into()])
+    }
+}
+
+impl<T, R, S, U, V, W> From<(T, R, S, U, V, W)> for Fact
+where
+    T: Into<TypedValue>,
+    R: Into<TypedValue>,
+    S: Into<TypedValue>,
+    U: Into<TypedValue>,
+    V: Into<TypedValue>,
+    W: Into<TypedValue>,
+{
+    fn from(value: (T, R, S, U, V, W)) -> Self {
+        Fact(vec![value.0.into(), value.1.into(), value.2.into(), value.3.into(), value.4.into(), value.5.into()])
+    }
+}
+
+impl<T, R, S, U, V, W, X> From<(T, R, S, U, V, W, X)> for Fact
+where
+    T: Into<TypedValue>,
+    R: Into<TypedValue>,
+    S: Into<TypedValue>,
+    U: Into<TypedValue>,
+    V: Into<TypedValue>,
+    W: Into<TypedValue>,
+    X: Into<TypedValue>,
+{
+    fn from(value: (T, R, S, U, V, W, X)) -> Self {
+        Fact(vec![value.0.into(), value.1.into(), value.2.into(), value.3.into(), value.4.into(), value.5.into(), value.6.into()])
+    }
+}
+
+impl<T, R, S, U, V, W, X, Y> From<(T, R, S, U, V, W, X, Y)> for Fact
+where
+    T: Into<TypedValue>,
+    R: Into<TypedValue>,
+    S: Into<TypedValue>,
+    U: Into<TypedValue>,
+    V: Into<TypedValue>,
+    W: Into<TypedValue>,
+    X: Into<TypedValue>,
+    Y: Into<TypedValue>,
+{
+    fn from(value: (T, R, S, U, V, W, X, Y)) -> Self {
+        Fact(vec![value.0.into(), value.1.into(), value.2.into(), value.3.into(), value.4.into(), value.5.into(), value.6.into(), value.7.into()])
+    }
+}
+
+impl<T> From<Vec<T>> for Fact
+where
+    T: Into<TypedValue>,
+{
+    fn from(value: Vec<T>) -> Self {
+        Fact(value.into_iter().map(|x| x.into()).collect())
+    }
+}
+
 
 #[derive(Ord, PartialOrd, Eq, PartialEq, Clone, Hash)]
 pub struct Atom {
@@ -159,7 +298,7 @@ impl Debug for Rule {
     }
 }
 
-#[derive(Debug, Ord, PartialOrd, Eq, PartialEq, Clone, Hash)]
+#[derive(Debug, Ord, PartialOrd, Eq, PartialEq, Clone, Hash, Default)]
 pub struct Program {
     pub inner: Vec<Rule>,
 }
@@ -176,3 +315,54 @@ impl From<Vec<Rule>> for Program {
         Self { inner: val }
     }
 }
+
+macro_rules! impl_fact_tuple {
+    (2) => {
+        impl<'a> TryInto<(&'a str, &'a str)> for &'a Fact {
+            type Error = String;
+            fn try_into(self) -> Result<(&'a str, &'a str), Self::Error> {
+                if self.0.len() != 2 {
+                    return Err("Fact must contain exactly 2 values".to_string());
+                }
+                Ok((
+                    match &self.0[0] {
+                        TypedValue::Str(s) => s.as_str(),
+                        _ => return Err("Value at position 0 must be a string".to_string())
+                    },
+                    match &self.0[1] {
+                        TypedValue::Str(s) => s.as_str(),
+                        _ => return Err("Value at position 1 must be a string".to_string())
+                    }
+                ))
+            }
+        }
+    };
+    (3) => {
+        impl<'a> TryInto<(&'a str, &'a str, &'a str)> for &'a Fact {
+            type Error = String;
+            fn try_into(self) -> Result<(&'a str, &'a str, &'a str), Self::Error> {
+                if self.0.len() != 3 {
+                    return Err("Fact must contain exactly 3 values".to_string());
+                }
+                Ok((
+                    match &self.0[0] {
+                        TypedValue::Str(s) => s.as_str(),
+                        _ => return Err("Value at position 0 must be a string".to_string())
+                    },
+                    match &self.0[1] {
+                        TypedValue::Str(s) => s.as_str(),
+                        _ => return Err("Value at position 1 must be a string".to_string())
+                    },
+                    match &self.0[2] {
+                        TypedValue::Str(s) => s.as_str(),
+                        _ => return Err("Value at position 2 must be a string".to_string())
+                    }
+                ))
+            }
+        }
+    };
+}
+
+// Implement for tuple sizes 2 and 3
+impl_fact_tuple!(2);
+impl_fact_tuple!(3);

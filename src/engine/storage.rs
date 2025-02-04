@@ -1,5 +1,4 @@
 use crate::evaluation::spj_processor::RuleEvaluator;
-use crate::helpers::helpers::{OVERDELETION_PREFIX, REDERIVATION_PREFIX};
 use ahash::{HashMap, HashMapExt};
 use datalog_syntax::{AnonymousGroundAtom, Program};
 use indexmap::IndexSet;
@@ -39,77 +38,6 @@ impl RelationStorage {
             )
         })
     }
-    pub fn overdelete(&mut self) {
-        let overdeletion_relations: Vec<_> = self
-            .inner
-            .iter()
-            .filter(|(symbol, _)| symbol.starts_with(OVERDELETION_PREFIX))
-            .map(|(symbol, _facts)| {
-                (
-                    symbol.clone(),
-                    symbol
-                        .strip_prefix(&OVERDELETION_PREFIX)
-                        .unwrap()
-                        .to_string(),
-                )
-            })
-            .collect();
-
-        overdeletion_relations.into_iter().for_each(
-            |(overdeletion_symbol, actual_relation_symbol)| {
-                let overdeletion_relation = self.inner.remove(&overdeletion_symbol).unwrap();
-                let actual_relation = self.inner.get_mut(&actual_relation_symbol).unwrap();
-
-                overdeletion_relation.iter().for_each(|atom| {
-                    actual_relation.remove(atom);
-                });
-
-                // We insert it back because it is necessary for rederivation.
-                self.inner
-                    .insert(overdeletion_symbol, overdeletion_relation);
-            },
-        );
-    }
-    pub fn rederive(&mut self) {
-        let rederivation_relations: Vec<_> = self
-            .inner
-            .iter()
-            .filter(|(symbol, _)| symbol.starts_with(REDERIVATION_PREFIX))
-            .map(|(symbol, _facts)| {
-                (
-                    symbol.clone(),
-                    symbol
-                        .strip_prefix(&REDERIVATION_PREFIX)
-                        .unwrap()
-                        .to_string(),
-                )
-            })
-            .collect();
-
-        rederivation_relations.into_iter().for_each(
-            |(rederivation_symbol, actual_relation_symbol)| {
-                let rederivation_relation = self.inner.remove(&rederivation_symbol).unwrap();
-                let actual_relation = self.inner.get_mut(&actual_relation_symbol).unwrap();
-
-                rederivation_relation.into_iter().for_each(|atom| {
-                    actual_relation.insert(atom);
-                });
-            },
-        );
-    }
-    pub fn clear_relation(&mut self, relation_symbol: &str) {
-        self.inner.get_mut(relation_symbol).unwrap().clear();
-    }
-    pub fn clear_prefix(&mut self, prefix: &str) {
-        self.inner.iter_mut().for_each(|ref_mult| {
-            let (symbol, relation) = ref_mult;
-
-            if symbol.starts_with(prefix) {
-                relation.clear()
-            }
-        });
-    }
-
     pub fn insert_registered(
         &mut self,
         relation_symbol: &str,
@@ -160,13 +88,6 @@ impl RelationStorage {
 
         true
     }
-    pub fn remove(&mut self, relation_symbol: &str, ground_atom: AnonymousGroundAtom) -> bool {
-        if let Some(relation) = self.inner.get_mut(relation_symbol) {
-            return relation.remove(&ground_atom);
-        }
-
-        false
-    }
     pub fn contains(&self, relation_symbol: &str, ground_atom: &AnonymousGroundAtom) -> bool {
         if let Some(relation) = self.inner.get(relation_symbol) {
             return relation.contains(ground_atom);
@@ -204,9 +125,13 @@ impl RelationStorage {
                     .map(|x| super::index_storage::EphemeralValue::FactRef(x)),
             );
         }
-
-        index_storage.inner.extend(index_storage.diff.drain());
-        index_storage.diff = new_diff;
+        
+        for diffs in index_storage.diff.values_mut() {
+            diffs.clear();
+        }
+        for (rel_name, new_diffs) in new_diff.clone() {
+            index_storage.borrow_all(&rel_name, new_diffs.into_iter());
+        }
     }
     pub fn materialize_recursive_delta_program<'a>(
         &mut self,
@@ -250,13 +175,12 @@ impl RelationStorage {
             },
         );
 
-        //println!("==Diff size: {:?}", index_storage.diff.iter().map(|(_, diff)| diff.len()).sum::<usize>());
-        for (symbol, diff) in index_storage.diff.drain() {
-            index_storage.inner.entry(symbol).or_default().extend(diff);
+        for diffs in index_storage.diff.values_mut() {
+            diffs.clear();
         }
-
-        index_storage.diff = new_diff;
-        //println!("==New diff size: {:?}", index_storage.diff.iter().map(|(_, diff)| diff.len()).sum::<usize>());
+        for (rel_name, new_diffs) in new_diff.clone() {
+            index_storage.borrow_all(&rel_name, new_diffs.into_iter());
+        }
     }
 
     pub fn len(&self) -> usize {

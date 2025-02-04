@@ -1,13 +1,13 @@
-use std::sync::Arc;
 use std::collections::HashMap;
+use std::sync::Arc;
 
 use crate::engine::index_storage::{EphemeralValue, IndexStorage};
 use crate::engine::storage::RelationStorage;
 use crate::evaluation::spj_processor::Instruction::{Antijoin, Join, Project};
+use boxcar;
 use datalog_syntax::{AnonymousGroundAtom, Rule, Term, TypedValue, Variable};
 use indexmap::{IndexMap, IndexSet};
 use rayon::prelude::*;
-use boxcar;
 
 // This implements a minimal SPJ (Select, Project, Join) processor
 
@@ -127,6 +127,7 @@ fn get_join(
 
     let mut join_keys = vec![];
 
+    // Find matching variables between left and right terms
     for (variable_name, left_position) in left_variable_map {
         if let Some(right_position) = right_variable_map.get(&variable_name) {
             join_keys.push((left_position, *right_position));
@@ -214,20 +215,33 @@ impl Stack {
     pub fn get_all_join_keys(&self) -> Vec<(String, Vec<(usize, usize)>)> {
         self.inner
             .iter()
-            .filter_map(|instruction| {
-                match instruction {
-                    Instruction::Join(left_symbol, right_symbol, join_keys) |
-                    Instruction::Antijoin(left_symbol, right_symbol, join_keys) => {
-                        Some(vec![
-                            (left_symbol.clone(), join_keys.clone()),
-                            (right_symbol.clone(), join_keys.iter().map(|(l, r)| (*r, *l)).collect())
-                        ])
-                    },
-                    _ => None
-                }
+            .filter_map(|instruction| match instruction {
+                Instruction::Join(left_symbol, right_symbol, join_keys)
+                | Instruction::Antijoin(left_symbol, right_symbol, join_keys) => Some(vec![
+                    (left_symbol.clone(), join_keys.clone()),
+                    (
+                        right_symbol.clone(),
+                        join_keys.iter().map(|(l, r)| (*r, *l)).collect(),
+                    ),
+                ]),
+                _ => None,
             })
             .flatten() // Flatten the vec of pairs into a single iterator
             .collect()
+    }
+
+    pub fn get_all_moves(&self) -> IndexSet<String> {
+        self.inner
+            .iter()
+            .filter(|m| match m {
+                Instruction::Move(_) => true,
+                _ => false,
+            })
+            .map(|m| match m {
+                Instruction::Move(symbol) => symbol.clone(),
+                _ => unreachable!(),
+            })
+            .collect::<IndexSet<_>>()
     }
 }
 
@@ -299,8 +313,8 @@ impl From<Rule> for Stack {
 }
 
 pub struct RuleEvaluator<'a> {
-    rule: &'a Rule,
-    facts_storage: &'a RelationStorage,
+    pub rule: &'a Rule,
+    pub facts_storage: &'a RelationStorage,
 }
 
 impl<'a> RuleEvaluator<'a> {
@@ -311,6 +325,7 @@ impl<'a> RuleEvaluator<'a> {
         }
     }
 }
+
 fn do_join(
     join_keys: &Vec<(usize, usize)>,
     left_relation: Option<&Vec<EphemeralValue>>,
@@ -318,113 +333,153 @@ fn do_join(
     join_key_positions: Option<&Vec<((usize, usize), usize)>>,
     index_storage: &IndexStorage,
     left_symbol: &str,
-) -> boxcar::Vec<EphemeralValue> { 
+    right_symbol: Option<&str>,
+) -> boxcar::Vec<EphemeralValue> {
     let join_result = boxcar::vec![];
-    
-    match left_relation {
-        // Use the pre-built index if we have one and left_relation is None
-        None => {
-            if let Some(hash_table) = index_storage.hash_indices.get(&(left_symbol.to_string(), join_keys.clone())) {
-                println!("using hash table for {:?}", left_symbol);
-                right_relation.into_par_iter().for_each(|right_allocation| {
-                    let right_fact = match right_allocation {
-                        EphemeralValue::FactRef(fact) => fact,
+
+    match (left_relation, right_symbol) {
+        // If we don't have left relation, and no right_symbol, we probe the hash table of the left relation with the given right_relation.
+        (None, None) => {
+            if let Some(hash_table) = index_storage
+                .hash_indices
+                .get(&left_symbol.to_string())
+                .and_then(|hash_table| hash_table.get(join_keys))
+            {
+                right_relation.into_iter().for_each(|right_allocation| {
+                    let probe_key: Vec<TypedValue> = match right_allocation {
+                        EphemeralValue::FactRef(right_fact) => {
+                            let key = join_keys
+                                .iter()
+                                .map(|(_, right_col)| right_fact[*right_col].clone())
+                                .collect();
+                            key
+                        }
                         EphemeralValue::JoinResult(_) => unreachable!(),
                     };
-                    
-                    let probe_key: Vec<TypedValue> = join_keys.iter()
-                        .map(|(_, right_col)| right_fact[*right_col].clone())
-                        .collect();
-                    
+
                     if let Some(matches) = hash_table.get(&probe_key) {
                         for left_allocation in matches {
-                            match left_allocation {
-                                EphemeralValue::FactRef(left_fact) => {
+                            match (left_allocation, right_allocation) {
+                                (
+                                    EphemeralValue::FactRef(left_fact),
+                                    EphemeralValue::FactRef(right_fact),
+                                ) => {
                                     join_result.push(EphemeralValue::JoinResult(vec![
                                         left_fact.clone(),
                                         right_fact.clone(),
                                     ]));
-                                },
-                                EphemeralValue::JoinResult(product) => {
-                                    let mut new_product = product.clone();
+                                }
+                                (
+                                    EphemeralValue::JoinResult(left_product),
+                                    EphemeralValue::FactRef(right_fact),
+                                ) => {
+                                    let mut new_product = left_product.clone();
                                     new_product.push(right_fact.clone());
                                     join_result.push(EphemeralValue::JoinResult(new_product));
                                 }
+                                _ => unreachable!(),
                             }
                         }
                     }
                 });
+            } else {
+                unreachable!()
+            }
+        }
+        // Else if there is a left_relation, and a right_symbol, we probe the hash table of the right relation with the given left_relation.
+        (Some(left_relation), Some(right_symbol)) => {
+            let reversed_join_keys: Vec<(usize, usize)> = join_keys.iter().map(|(left, right)| (*right, *left)).collect();
+
+            if let Some(hash_table) = index_storage
+                .hash_indices
+                .get(&right_symbol.to_string())
+                .and_then(|hash_table| hash_table.get(&reversed_join_keys))
+            {
+                left_relation.into_iter().for_each(|left_allocation| {
+                    let probe_key: Vec<TypedValue> = match left_allocation {
+                        EphemeralValue::FactRef(left_fact) => {
+                            let key = reversed_join_keys
+                                .iter()
+                                .map(|(_, left_col)| left_fact[*left_col].clone())
+                                .collect();
+                            key
+                        }
+                        EphemeralValue::JoinResult(left_product) => {
+                            let key = join_key_positions
+                                .unwrap()
+                                .iter()
+                                .map(|((left_fact_idx, left_column), _)| left_product[*left_fact_idx][*left_column].clone())
+                                .collect();
+
+                            key
+                        }
+                    };
+
+                    if let Some(matches) = hash_table.get(&probe_key) {
+                        for right_allocation in matches {
+                            match (left_allocation, right_allocation) {
+                                (
+                                    EphemeralValue::FactRef(left_fact),
+                                    EphemeralValue::FactRef(right_fact),
+                                ) => {
+                                    join_result.push(EphemeralValue::JoinResult(vec![
+                                        left_fact.clone(),
+                                        right_fact.clone(),
+                                    ]));
+                                }
+                                (
+                                    EphemeralValue::JoinResult(left_product),
+                                    EphemeralValue::FactRef(right_fact),
+                                ) => {
+                                    let mut new_product = left_product.clone();
+                                    new_product.push(right_fact.clone());
+                                    join_result.push(EphemeralValue::JoinResult(new_product));
+                                }
+                                _ => unreachable!(),
+                            }
+                        }
+                    };
+                });
+            } else {
+                unreachable!()
             }
         },
-        // Build a temporary hash table if we're given a left_relation
-        Some(left_relation) => {
-            let hash_table: HashMap<Vec<TypedValue>, Vec<EphemeralValue>> = left_relation
-                .into_par_iter()
-                .fold(
-                    || HashMap::new(),
-                    |mut acc: HashMap<Vec<TypedValue>, Vec<EphemeralValue>>, left_allocation| {
-                        let key = match left_allocation {
-                            EphemeralValue::FactRef(left_fact) => {
-                                join_keys.iter()
-                                    .map(|(left_col, _)| left_fact[*left_col].clone())
-                                    .collect()
-                            },
-                            EphemeralValue::JoinResult(product) => {
-                                if let Some(join_key_positions) = join_key_positions {
-                                    join_key_positions.iter()
-                                        .map(|((left_fact_idx, left_column), _)| {
-                                            product[*left_fact_idx][*left_column].clone()
-                                        })
-                                        .collect()
-                                } else {
-                                    return acc;
-                                }
-                            }
-                        };
-                        
-                        acc.entry(key).or_default().push(left_allocation.clone());
-                        acc
-                    },
-                )
-                .reduce(
-                    || HashMap::new(),
-                    |mut acc, partial| {
-                        for (key, values) in partial {
-                            acc.entry(key).or_default().extend(values);
-                        }
-                        acc
-                    },
-                );
-
-            right_relation.into_iter().for_each(|right_allocation| {
-                let right_fact = match right_allocation {
-                    EphemeralValue::FactRef(fact) => fact,
-                    EphemeralValue::JoinResult(_) => unreachable!(),
-                };
-                
-                let probe_key: Vec<TypedValue> = join_keys.iter()
-                    .map(|(_, right_col)| right_fact[*right_col].clone())
-                    .collect();
-                
-                if let Some(matches) = hash_table.get(&probe_key) {
-                    for left_allocation in matches {
-                        match left_allocation {
-                            EphemeralValue::FactRef(left_fact) => {
+        (Some(left_relation), None) => {
+            left_relation.iter().for_each(|left_allocation| {
+                right_relation.iter().for_each(|right_allocation| {
+                    match (left_allocation, right_allocation) {
+                        (EphemeralValue::FactRef(left_fact), EphemeralValue::FactRef(right_fact)) => {
+                            let matches = join_keys.iter().all(|(left_col, right_col)| {
+                                left_fact[*left_col] == right_fact[*right_col]
+                            });
+                            
+                            if matches {
                                 join_result.push(EphemeralValue::JoinResult(vec![
                                     left_fact.clone(),
                                     right_fact.clone(),
                                 ]));
-                            },
-                            EphemeralValue::JoinResult(product) => {
-                                let mut new_product = product.clone();
-                                new_product.push(right_fact.clone());
-                                join_result.push(EphemeralValue::JoinResult(new_product));
+                            };
+                        }
+                        (EphemeralValue::JoinResult(product), EphemeralValue::FactRef(right_fact)) => {
+                            if let Some(join_key_positions) = join_key_positions.as_ref() {
+                                let matches = join_key_positions.iter().enumerate().all(|(i, _)| {
+                                    let ((left_fact_idx, left_column), right_column) = join_key_positions[i];
+                                    product[left_fact_idx][left_column] == right_fact[right_column]
+                                });
+                                
+                                if matches {
+                                    let mut new_product = product.clone();
+                                    new_product.push(right_fact.clone());
+                                    join_result.push(EphemeralValue::JoinResult(new_product));
+                                };
                             }
                         }
-                    }
-                }
+                        _ => unreachable!(),
+                    };
+                });
             });
         }
+        _ => unreachable!(),
     }
 
     join_result
@@ -448,35 +503,15 @@ impl<'a> RuleEvaluator<'a> {
                     if idx == penultimate_operation {
                         relation_symbol_to_be_projected = symbol.clone();
                     }
-                    let moved = index_storage.inner.get(symbol).is_some();
-                    println!("Attempting to move - {:?}", symbol);
-                    if !moved {
-                        println!("Not moved - {:?}", symbol);
-                        let fact_refs = self.facts_storage.get_relation(symbol);
-
-                        index_storage.borrow_all(
-                            symbol,
-                            fact_refs
-                                .into_iter()
-                                .map(|fact| EphemeralValue::FactRef(fact.clone())),
-                            None
-                        );
-                    } else {
-                        //println!("Index storage size for - {}: {:?}", symbol, index_storage.inner.get(symbol).unwrap().len());
-                        //println!("Diff Index storage size for - {}: {:?}", symbol, index_storage.inner.get(symbol).unwrap().len());
-                    }
                 }
                 Instruction::Select(symbol, sign, column, value) => {
-                    //println!("==Attempting to select - {:?}", operation);
                     let index_name = stringify_selection(&operation);
                     if idx == penultimate_operation {
                         relation_symbol_to_be_projected = index_name.clone();
                     }
-                    // If the index already exists, then this is a NOOP.
                     if index_storage.diff.get(&index_name).is_none() {
                         let target_relation = self.facts_storage.get_relation(symbol);
 
-                        // Apply the selection based on the `sign`
                         let selection = target_relation
                             .iter()
                             .filter(|fact| {
@@ -488,7 +523,7 @@ impl<'a> RuleEvaluator<'a> {
                             })
                             .map(|fact| EphemeralValue::FactRef(fact.clone()));
 
-                        index_storage.borrow_all(&index_name, selection, None);
+                        index_storage.borrow_all(&index_name, selection);
                     }
                 }
 
@@ -502,7 +537,10 @@ impl<'a> RuleEvaluator<'a> {
                     let join_result_name = stringify_join(operation);
                     let mut join_key_positions = None;
                     if let Some(left_relation) = left {
-                        if let Some(left_allocation) = left_relation.get(0).or_else(|| left_delta.and_then(|ld| ld.get(0))) {
+                        if let Some(left_allocation) = left_relation
+                            .get(0)
+                            .or_else(|| left_delta.and_then(|ld| ld.get(0)))
+                        {
                             match left_allocation {
                                 EphemeralValue::JoinResult(product) => {
                                     join_key_positions = Some(
@@ -534,74 +572,68 @@ impl<'a> RuleEvaluator<'a> {
                         };
                     }
 
-                    let ((left_right_delta, right_left_delta), left_delta_right_delta) = rayon::join(|| {
-                        (
-                            if left.is_some() && right_delta.is_some() {
-                                println!("====Left size: {:?}", left.unwrap().len());
-                                println!("====Right delta size: {:?}", right_delta.unwrap().len());
+                    let (left_right_delta, (right_left_delta, left_delta_right_delta)) =
+                        rayon::join(
+                            || {
                                 
-                                Some(do_join(
-                                    join_keys,
-                                    None,  
-                                    right_delta.as_ref().unwrap(),
-                                    join_key_positions.as_ref(),
-                                    index_storage,
-                                    left_symbol,
-                                ))
-                            } else {
-                                println!("==== left: {} is: {}, right delta: {} is: {}", left_symbol, left.is_some(), right_symbol, right_delta.is_some());
-                                None
+                                    if left.is_some() && right_delta.is_some() {
+                                        Some(do_join(
+                                            join_keys,
+                                            None,
+                                            right_delta.as_ref().unwrap(),
+                                            join_key_positions.as_ref(),
+                                            &*index_storage,
+                                            left_symbol,
+                                            None,
+                                        ))
+                                    } else {
+                                        None
+                                    } 
+                                
                             },
-                            if right.is_some() && left_delta.is_some() {
-                                println!("====Left delta size: {:?}", left_delta.unwrap().len());
-                                println!("====Right size: {:?}", right.unwrap().len());
-                                Some(do_join(
-                                    join_keys,
-                                    Some(left_delta.as_ref().unwrap()),  
-                                    right.as_ref().unwrap(),
-                                    join_key_positions.as_ref(),
-                                    index_storage,
-                                    right_symbol,
-                                ))
-                            } else {
-                                println!("==== right: {} is: {}, left delta: {} is: {}", right_symbol, right.is_some(), left_symbol, left_delta.is_some());
-                                None
-                            }
-                        )
-                    }, || {
-                        if left_delta.is_some() && right_delta.is_some() {
-                            println!("====Left delta size: {:?}", left_delta.unwrap().len());
-                            println!("====Right delta size: {:?}", right_delta.unwrap().len());
-                            Some(do_join(
-                                join_keys,
-                                Some(left_delta.as_ref().unwrap()),
-                                right_delta.as_ref().unwrap(),
-                                join_key_positions.as_ref(),
-                                index_storage,
-                                left_symbol,
-                            ))
-                        } else {
-                            println!("==== left delta: {} is: {}, right delta: {} is: {}", left_symbol, left_delta.is_none(), right_symbol, right_delta.is_none());
-                            None
-                        }
-                    });
-                    
+                            || {
+                                (if left_delta.is_some() && right.is_some() {
+                                        Some(do_join(
+                                            join_keys,
+                                            Some(left_delta.as_ref().unwrap()),
+                                            right.as_ref().unwrap(),
+                                            join_key_positions.as_ref(),
+                                            &*index_storage,
+                                            left_symbol,
+                                            Some(right_symbol.as_ref()),
+                                        ))
+                                    } else {
+                                        None
+                                    },
+                                if left_delta.is_some() && right_delta.is_some() {
+                                    Some(do_join(
+                                        join_keys,
+                                        Some(left_delta.as_ref().unwrap()),
+                                        right_delta.as_ref().unwrap(),
+                                        join_key_positions.as_ref(),
+                                        &*index_storage,
+                                        left_symbol,
+                                        None,
+                                    ))
+                                } else {
+                                    None
+                                })
+                            },
+                        );
+
                     if idx == penultimate_operation {
-                           relation_symbol_to_be_projected = join_result_name.clone();
+                        relation_symbol_to_be_projected = join_result_name.clone();
                     }
 
                     if let Some(left_right_delta) = left_right_delta {
-                        println!("left_right_delta: {:?}", left_right_delta.count());
-                        index_storage.borrow_all(&join_result_name, left_right_delta.into_iter(), Some(join_keys.clone()));
+                        index_storage.borrow_all(&join_result_name, left_right_delta.into_iter());
                     }
                     if let Some(right_left_delta) = right_left_delta {
-                        println!("right_left_delta: {:?}", right_left_delta.count());
-                        index_storage.borrow_all(&join_result_name, right_left_delta.into_iter(), Some(join_keys.clone()));
+                        index_storage.borrow_all(&join_result_name, right_left_delta.into_iter());
                     }
                     if let Some(left_delta_right_delta) = left_delta_right_delta {
-                        println!("left_delta_right_delta: {:?}", left_delta_right_delta.count());
                         index_storage
-                            .borrow_all(&join_result_name, left_delta_right_delta.into_iter(), Some(join_keys.clone()));
+                            .borrow_all(&join_result_name, left_delta_right_delta.into_iter());
                     }
                 }
 
@@ -611,30 +643,34 @@ impl<'a> RuleEvaluator<'a> {
                         .get(relation_symbol_to_be_projected.as_str())
                     {
                         ephemeral_relation_to_be_projected
-                        .into_iter()
-                        .for_each(|allocation| {
-                            let fact = match allocation {
-                                EphemeralValue::FactRef(fact) => fact.clone(),
-                                EphemeralValue::JoinResult(facts) => Arc::new(
-                                    facts
-                                        .into_iter()
-                                        .flat_map(|fact| fact.iter().cloned().collect::<Vec<_>>())
-                                        .collect(),
-                                ),
-                            };
-                            let mut projection = vec![];
+                            .into_iter()
+                            .for_each(|allocation| {
+                                let fact = match allocation {
+                                    EphemeralValue::FactRef(fact) => fact.clone(),
+                                    EphemeralValue::JoinResult(facts) => Arc::new(
+                                        facts
+                                            .into_iter()
+                                            .flat_map(|fact| {
+                                                fact.iter().cloned().collect::<Vec<_>>()
+                                            })
+                                            .collect(),
+                                    ),
+                                };
+                                let mut projection = vec![];
 
-                            projection_inputs.iter().for_each(|projection_input| {
-                                match projection_input {
-                                    ProjectionInput::Column(column) => {
-                                        projection.push(fact[*column].clone())
+                                projection_inputs.iter().for_each(|projection_input| {
+                                    match projection_input {
+                                        ProjectionInput::Column(column) => {
+                                            projection.push(fact[*column].clone())
+                                        }
+                                        ProjectionInput::Value(value) => {
+                                            projection.push(value.clone())
+                                        }
                                     }
-                                    ProjectionInput::Value(value) => projection.push(value.clone()),
-                                }
-                            });
+                                });
 
-                            grounded_facts.push(projection)
-                        });
+                                grounded_facts.push(projection)
+                            });
                     }
                 }
             }
@@ -648,6 +684,7 @@ impl<'a> RuleEvaluator<'a> {
 mod test {
     use crate::evaluation::spj_processor::{Instruction, ProjectionInput, Stack};
     use datalog_rule_macro::rule;
+
     use datalog_syntax::*;
 
     #[test]
