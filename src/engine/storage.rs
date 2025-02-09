@@ -125,10 +125,7 @@ impl RelationStorage {
                     .map(|x| super::index_storage::EphemeralValue::FactRef(x)),
             );
         }
-        
-        for diffs in index_storage.diff.values_mut() {
-            diffs.clear();
-        }
+
         for (rel_name, new_diffs) in new_diff.clone() {
             index_storage.borrow_all(&rel_name, new_diffs.into_iter());
         }

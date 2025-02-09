@@ -388,7 +388,10 @@ fn do_join(
         }
         // Else if there is a left_relation, and a right_symbol, we probe the hash table of the right relation with the given left_relation.
         (Some(left_relation), Some(right_symbol)) => {
-            let reversed_join_keys: Vec<(usize, usize)> = join_keys.iter().map(|(left, right)| (*right, *left)).collect();
+            let reversed_join_keys: Vec<(usize, usize)> = join_keys
+                .iter()
+                .map(|(left, right)| (*right, *left))
+                .collect();
 
             if let Some(hash_table) = index_storage
                 .hash_indices
@@ -408,7 +411,9 @@ fn do_join(
                             let key = join_key_positions
                                 .unwrap()
                                 .iter()
-                                .map(|((left_fact_idx, left_column), _)| left_product[*left_fact_idx][*left_column].clone())
+                                .map(|((left_fact_idx, left_column), _)| {
+                                    left_product[*left_fact_idx][*left_column].clone()
+                                })
                                 .collect();
 
                             key
@@ -443,16 +448,19 @@ fn do_join(
             } else {
                 unreachable!()
             }
-        },
+        }
         (Some(left_relation), None) => {
             left_relation.iter().for_each(|left_allocation| {
                 right_relation.iter().for_each(|right_allocation| {
                     match (left_allocation, right_allocation) {
-                        (EphemeralValue::FactRef(left_fact), EphemeralValue::FactRef(right_fact)) => {
+                        (
+                            EphemeralValue::FactRef(left_fact),
+                            EphemeralValue::FactRef(right_fact),
+                        ) => {
                             let matches = join_keys.iter().all(|(left_col, right_col)| {
                                 left_fact[*left_col] == right_fact[*right_col]
                             });
-                            
+
                             if matches {
                                 join_result.push(EphemeralValue::JoinResult(vec![
                                     left_fact.clone(),
@@ -460,13 +468,19 @@ fn do_join(
                                 ]));
                             };
                         }
-                        (EphemeralValue::JoinResult(product), EphemeralValue::FactRef(right_fact)) => {
+                        (
+                            EphemeralValue::JoinResult(product),
+                            EphemeralValue::FactRef(right_fact),
+                        ) => {
                             if let Some(join_key_positions) = join_key_positions.as_ref() {
-                                let matches = join_key_positions.iter().enumerate().all(|(i, _)| {
-                                    let ((left_fact_idx, left_column), right_column) = join_key_positions[i];
-                                    product[left_fact_idx][left_column] == right_fact[right_column]
-                                });
-                                
+                                let matches =
+                                    join_key_positions.iter().enumerate().all(|(i, _)| {
+                                        let ((left_fact_idx, left_column), right_column) =
+                                            join_key_positions[i];
+                                        product[left_fact_idx][left_column]
+                                            == right_fact[right_column]
+                                    });
+
                                 if matches {
                                     let mut new_product = product.clone();
                                     new_product.push(right_fact.clone());
@@ -495,7 +509,7 @@ impl<'a> RuleEvaluator<'a> {
         // There will always be at least two elements on the stack. Move or Select, and then Projection.
         let penultimate_operation = stack.inner.len() - 2;
         let mut relation_symbol_to_be_projected = self.rule.head.symbol.clone();
-        let mut grounded_facts: Vec<AnonymousGroundAtom> = vec![];
+        let mut grounded_facts = vec![];
 
         for (idx, operation) in stack.inner.iter().enumerate() {
             match operation {
@@ -575,24 +589,23 @@ impl<'a> RuleEvaluator<'a> {
                     let (left_right_delta, (right_left_delta, left_delta_right_delta)) =
                         rayon::join(
                             || {
-                                
-                                    if left.is_some() && right_delta.is_some() {
-                                        Some(do_join(
-                                            join_keys,
-                                            None,
-                                            right_delta.as_ref().unwrap(),
-                                            join_key_positions.as_ref(),
-                                            &*index_storage,
-                                            left_symbol,
-                                            None,
-                                        ))
-                                    } else {
-                                        None
-                                    } 
-                                
+                                if left.is_some() && right_delta.is_some() {
+                                    Some(do_join(
+                                        join_keys,
+                                        None,
+                                        right_delta.as_ref().unwrap(),
+                                        join_key_positions.as_ref(),
+                                        &*index_storage,
+                                        left_symbol,
+                                        None,
+                                    ))
+                                } else {
+                                    None
+                                }
                             },
                             || {
-                                (if left_delta.is_some() && right.is_some() {
+                                (
+                                    if left_delta.is_some() && right.is_some() {
                                         Some(do_join(
                                             join_keys,
                                             Some(left_delta.as_ref().unwrap()),
@@ -605,19 +618,20 @@ impl<'a> RuleEvaluator<'a> {
                                     } else {
                                         None
                                     },
-                                if left_delta.is_some() && right_delta.is_some() {
-                                    Some(do_join(
-                                        join_keys,
-                                        Some(left_delta.as_ref().unwrap()),
-                                        right_delta.as_ref().unwrap(),
-                                        join_key_positions.as_ref(),
-                                        &*index_storage,
-                                        left_symbol,
-                                        None,
-                                    ))
-                                } else {
-                                    None
-                                })
+                                    if left_delta.is_some() && right_delta.is_some() {
+                                        Some(do_join(
+                                            join_keys,
+                                            Some(left_delta.as_ref().unwrap()),
+                                            right_delta.as_ref().unwrap(),
+                                            join_key_positions.as_ref(),
+                                            &*index_storage,
+                                            left_symbol,
+                                            None,
+                                        ))
+                                    } else {
+                                        None
+                                    },
+                                )
                             },
                         );
 
@@ -669,7 +683,7 @@ impl<'a> RuleEvaluator<'a> {
                                     }
                                 });
 
-                                grounded_facts.push(projection)
+                                grounded_facts.push(projection);
                             });
                     }
                 }

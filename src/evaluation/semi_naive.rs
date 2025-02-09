@@ -2,13 +2,13 @@ use crate::engine::index_storage::IndexStorage;
 use crate::engine::storage::RelationStorage;
 use datalog_syntax::Program;
 
-
 pub fn semi_naive_evaluation(
     relation_storage: &mut RelationStorage,
     nonrecursive_program: &Program,
     recursive_program: &Program,
 ) {
-    let mut index_storage = IndexStorage::from((nonrecursive_program, recursive_program, &*relation_storage));
+    let mut index_storage =
+        IndexStorage::from((nonrecursive_program, recursive_program, &*relation_storage));
 
     relation_storage
         .materialize_nonrecursive_delta_program(nonrecursive_program, &mut index_storage);
