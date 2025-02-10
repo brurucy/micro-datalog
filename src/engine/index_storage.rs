@@ -17,10 +17,23 @@ pub enum EphemeralValue {
 type JoinKey = Vec<(usize, usize)>;
 type HashIndex = HashMap<Vec<TypedValue>, Vec<EphemeralValue>>;
 
+/// Storage structure for managing indexed relations and their deltas during query evaluation
 #[derive(Default)]
 pub struct IndexStorage {
+    /// All inference results (except the latest aka diff) mapping relation names to their current values
+    /// Key: Name of the relation
+    /// Value: Vector of facts (as EphemeralValues) for that relation
     pub inner: HashMap<String, Vec<EphemeralValue>>,
+
+    /// Differential storage tracking newly added facts since last evaluation
+    /// Key: Name of the relation
+    /// Value: Vector of new facts (as EphemeralValues) added in current iteration
     pub diff: HashMap<String, Vec<EphemeralValue>>,
+
+    /// Multi-level index structure for optimizing joins
+    /// First level: Relation name
+    /// Second level: Join key pattern (which columns are used for joining)
+    /// Third level: Hash index mapping join key values to matching facts
     pub hash_indices: HashMap<String, HashMap<JoinKey, HashIndex>>,
 }
 
