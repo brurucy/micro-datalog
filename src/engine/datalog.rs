@@ -3,21 +3,20 @@ use crate::evaluation::query::pattern_match;
 use crate::evaluation::semi_naive::semi_naive_evaluation;
 use crate::helpers::helpers::split_program;
 use crate::program_transformations::dependency_graph::sort_program;
-use crate::program_transformations::magic_sets::{
-    apply_magic_transformation, create_magic_seed_fact,
-};
 use datalog_syntax::*;
 use indexmap::IndexSet;
+
+use super::magic_evaluator::MagicEvaluator;
 
 /// A Datalog runtime engine that supports incremental evaluation of rules using semi-naive strategy
 #[derive(Default)]
 pub struct MicroRuntime {
     /// Storage for facts that have gone through all fixpoint iterations
     /// These facts represent the current state of derived relations
-    processed: RelationStorage,
+    pub processed: RelationStorage,
 
     /// Storage for newly inserted facts that haven't been processed yet
-    unprocessed_insertions: RelationStorage,
+    pub unprocessed_insertions: RelationStorage,
 
     /// Contains rules that can be evaluated in a single pass without fixpoint iteration
     nonrecursive_program: Program,
@@ -84,95 +83,9 @@ impl MicroRuntime {
         program: Program,
         strategy: &str,
     ) -> Result<impl Iterator<Item = AnonymousGroundAtom> + 'a, String> {
-        // Create adorned query symbol by combining original symbol with binding pattern
-        let pattern_string: String = query
-            .matchers
-            .iter()
-            .map(|matcher| match matcher {
-                Matcher::Constant(_) => 'b',
-                Matcher::Any => 'f',
-            })
-            .collect();
-
-        let adorned_symbol = format!("{}_{}", query.symbol, pattern_string);
-
-        let query_temp = Query {
-            matchers: query.matchers.clone(),
-            symbol: &adorned_symbol,
-        };
-        // Transform program using magic sets
-        let magic_program = apply_magic_transformation(&program, query);
-
-        // Create new runtime with transformed program
-        let mut runtime = MicroRuntime::new(magic_program.clone());
-
-        for (rel_name, facts) in &self.processed.inner {
-            if !program
-                .inner
-                .iter()
-                .any(|rule| rule.head.symbol == *rel_name)
-            {
-                if !facts.is_empty() {
-                    runtime
-                        .processed
-                        .insert_registered(rel_name, facts.iter().cloned());
-                }
-            }
-        }
-
-        // Also collect unprocessed insertions for base predicates
-        for (rel_name, facts) in &self.unprocessed_insertions.inner {
-            if !program
-                .inner
-                .iter()
-                .any(|rule| rule.head.symbol == *rel_name)
-            {
-                if !facts.is_empty() {
-                    runtime
-                        .unprocessed_insertions
-                        .insert_registered(&rel_name, facts.iter().cloned());
-                }
-            }
-        }
-
-        // Also initialize storage for all adorned predicates
-        for rule in magic_program.inner {
-            runtime
-                .unprocessed_insertions
-                .inner
-                .entry(rule.head.symbol.clone())
-                .or_default();
-            for body_atom in &rule.body {
-                runtime
-                    .unprocessed_insertions
-                    .inner
-                    .entry(body_atom.symbol.clone())
-                    .or_default();
-            }
-        }
-
-        // Add magic seed fact
-        let (magic_pred, seed_fact) = create_magic_seed_fact(query);
-
-        runtime
-            .unprocessed_insertions
-            .inner
-            .entry(magic_pred.clone())
-            .or_default();
-
-        runtime.insert(&magic_pred, seed_fact);
-
-        runtime.poll();
-
-        let result: Vec<_> = runtime
-            .processed
-            .get_relation(query_temp.symbol)
-            .iter()
-            .filter(|fact| pattern_match(&query_temp, fact))
-            .map(|fact| (**fact).clone())
-            .collect();
-
-        return Ok(result.into_iter());
+        let mut evaluator =
+            MagicEvaluator::new(&mut self.processed, &mut self.unprocessed_insertions);
+        evaluator.evaluate_query(query, program)
     }
 
     pub fn new(program: Program) -> Self {
