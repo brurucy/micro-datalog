@@ -55,12 +55,6 @@ fn main() {
         .into_iter()
         .collect();
     println!("micro: {} milis", now.elapsed().as_millis());
-    let q = build_query!(tc(_, _));
-    let answer: Vec<_> = micro_runtime
-        .query_program(&q, program, "Bottom-up")
-        .unwrap()
-        .into_iter()
-        .collect();
     println!("inferred tuples: {}", answer.len());
 
     let now = Instant::now();
