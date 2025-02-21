@@ -9,6 +9,9 @@ use crate::program_transformations::dependency_graph::sort_program;
 use datalog_syntax::*;
 use indexmap::IndexSet;
 
+use super::magic_evaluator::MagicEvaluator;
+use super::subsumptive_evaluator::SubsumptiveEvaluator;
+
 /// A Datalog runtime engine that supports incremental evaluation of rules using semi-naive strategy
 #[derive(Default)]
 pub struct MicroRuntime {
@@ -84,67 +87,9 @@ impl MicroRuntime {
         program: Program,
         strategy: &str,
     ) -> Result<impl Iterator<Item = AnonymousGroundAtom> + 'a, String> {
-        match strategy {
-            "Top-down" => {
-                let mut table = SubsumptiveTable::new();
-
-                // Save current base facts
-                let mut base_facts = HashMap::new();
-                for (rel_name, facts) in &self.processed.inner {
-                    if !program
-                        .inner
-                        .iter()
-                        .any(|rule| rule.head.symbol == *rel_name)
-                    {
-                        let facts_vec: Vec<Arc<AnonymousGroundAtom>> =
-                            facts.iter().cloned().collect();
-                        if !facts_vec.is_empty() {
-                            base_facts.insert(rel_name.clone(), facts_vec);
-                        }
-                    }
-                }
-
-                for (rel_name, facts) in &self.unprocessed_insertions.inner {
-                    if !program
-                        .inner
-                        .iter()
-                        .any(|rule| rule.head.symbol == *rel_name)
-                    {
-                        let facts_vec: Vec<Arc<AnonymousGroundAtom>> =
-                            facts.iter().cloned().collect();
-
-                        if !facts_vec.is_empty() {
-                            base_facts
-                                .entry(rel_name.clone())
-                                .or_insert_with(Vec::new)
-                                .extend(facts_vec);
-                        }
-                    }
-                }
-
-                // Create new runtime with original program
-                let mut runtime = MicroRuntime::new(program);
-
-                // Restore base facts
-                for (rel_name, facts) in base_facts {
-                    runtime
-                        .processed
-                        .insert_registered(&rel_name, facts.into_iter());
-                }
-                // Evaluate using subsumptive tabling and collect into Vec
-                let results: Vec<_> = runtime
-                    .evaluate_subsumptive(query, &mut table)?
-                    .into_iter()
-                    .collect();
-                Ok(results.into_iter())
-            }
-            "Bottom-up" => {
-                let mut evaluator =
-                    MagicEvaluator::new(&mut self.processed, &mut self.unprocessed_insertions);
-                evaluator.evaluate_query(query, program)
-            }
-            &_ => Err("Invalid evaluation strategy. Use 'Top-down' or 'Bottom-up'".to_string()),
-        }
+        let mut evaluator =
+            MagicEvaluator::new(&mut self.processed, &mut self.unprocessed_insertions);
+        evaluator.evaluate_query(query, program)
     }
 
     pub fn new(program: Program) -> Self {

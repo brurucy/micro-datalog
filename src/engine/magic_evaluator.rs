@@ -24,7 +24,7 @@ impl<'a> MagicEvaluator<'a> {
         &mut self,
         query: &'b Query,
         program: Program,
-    ) -> Result<impl Iterator<Item = AnonymousGroundAtom> + 'b, String> {
+    ) -> Result<impl Iterator<Item = AnonymousGroundAtom> + 'a, String> {
         // Create adorned query symbol by combining original symbol with binding pattern
         let pattern_string: String = query
             .matchers
