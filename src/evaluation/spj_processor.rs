@@ -7,7 +7,6 @@ use crate::evaluation::spj_processor::Instruction::{Antijoin, Join, Project};
 use boxcar;
 use datalog_syntax::{AnonymousGroundAtom, Rule, Term, TypedValue, Variable};
 use indexmap::{IndexMap, IndexSet};
-use rayon::prelude::*;
 
 // This implements a minimal SPJ (Select, Project, Join) processor
 

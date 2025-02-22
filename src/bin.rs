@@ -31,7 +31,7 @@ fn main() {
         tc(?x, ?z) <- [e(?x, ?y), tc(?y, ?z)]
     };
 
-    let mut micro_runtime = MicroRuntime::new(program);
+    let mut micro_runtime = MicroRuntime::new(program.clone());
     let mut ascnt_runtime = AscentProgram::default();
     let mut crepe_runtime = Crepe::new();
 
@@ -47,21 +47,35 @@ fn main() {
     });
 
     let now = Instant::now();
-    micro_runtime.poll();
+    
+    let query = build_query!(tc(4, _));
+    let answer: Vec<_> = micro_runtime
+        .query_program(&query, program, "Bottom-up")
+        .unwrap()
+        .into_iter()
+        .collect();
     println!("micro: {} milis", now.elapsed().as_millis());
-    let q = build_query!(tc(_, _));
-    let answer: Vec<_> = micro_runtime.query(&q).unwrap().into_iter().collect();
     println!("inferred tuples: {}", answer.len());
 
     let now = Instant::now();
     let teecee = crepe_runtime.run();
+    let crepe_answer: Vec<_> = teecee
+        .0
+        .iter()
+        .filter(|tc| tc.0 == 4) // Filter where first element is 4
+        .collect();
     println!("crepe: {} milis", now.elapsed().as_millis());
-    println!("inferred tuples: {}", teecee.0.len());
+    println!("inferred tuples: {}", crepe_answer.len());
 
     let now = Instant::now();
     ascnt_runtime.run();
+    let ascent_answer: Vec<_> = ascnt_runtime
+        .tc
+        .iter()
+        .filter(|(from, _to)| *from == 4)
+        .collect();
     println!("ascent: {} milis", now.elapsed().as_millis());
-    println!("inferred tuples: {}", ascnt_runtime.tc.len());
+    println!("inferred tuples: {}", ascent_answer.len());
 }
 
 // crepe! {

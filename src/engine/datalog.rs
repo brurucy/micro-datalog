@@ -6,10 +6,22 @@ use crate::program_transformations::dependency_graph::sort_program;
 use datalog_syntax::*;
 use indexmap::IndexSet;
 
+use super::magic_evaluator::MagicEvaluator;
+
+/// A Datalog runtime engine that supports incremental evaluation of rules using semi-naive strategy
+#[derive(Default)]
 pub struct MicroRuntime {
-    processed: RelationStorage,
-    unprocessed_insertions: RelationStorage,
+    /// Storage for facts that have gone through all fixpoint iterations
+    /// These facts represent the current state of derived relations
+    pub(crate) processed: RelationStorage,
+
+    /// Storage for newly inserted facts that haven't been processed yet
+    pub(crate) unprocessed_insertions: RelationStorage,
+
+    /// Contains rules that can be evaluated in a single pass without fixpoint iteration
     nonrecursive_program: Program,
+
+    /// Contains rules that require fixpoint iteration for complete evaluation
     recursive_program: Program,
 }
 
@@ -18,6 +30,7 @@ impl MicroRuntime {
         self.unprocessed_insertions
             .insert(relation, ground_atom.into().0)
     }
+
     pub fn contains(&self, relation: &str, ground_atom: impl Into<Fact>) -> Result<bool, String> {
         if !self.safe() {
             return Err("poll needed to obtain correct results".to_string());
@@ -30,6 +43,7 @@ impl MicroRuntime {
 
         Ok(true)
     }
+
     pub fn query<'a>(
         &'a self,
         query: &'a Query,
@@ -54,13 +68,24 @@ impl MicroRuntime {
                         .insert_registered(&relation_symbol, unprocessed_facts.into_iter());
                 },
             );
-
-            semi_naive_evaluation(
-                &mut self.processed,
-                &self.nonrecursive_program,
-                &self.recursive_program,
-            );
         }
+
+        semi_naive_evaluation(
+            &mut self.processed,
+            &self.nonrecursive_program,
+            &self.recursive_program,
+        );
+    }
+
+    pub fn query_program<'a>(
+        &'a mut self,
+        query: &'a Query,
+        program: Program,
+        strategy: &str,
+    ) -> Result<impl Iterator<Item = AnonymousGroundAtom> + 'a, String> {
+        let mut evaluator =
+            MagicEvaluator::new(&mut self.processed, &mut self.unprocessed_insertions);
+        evaluator.evaluate_query(query, program)
     }
 
     pub fn new(program: Program) -> Self {
@@ -89,6 +114,7 @@ impl MicroRuntime {
         });
 
         let (nonrecursive_program, recursive_program) = split_program(program.clone());
+
         let nonrecursive_program = sort_program(&nonrecursive_program);
 
         Self {
@@ -98,6 +124,7 @@ impl MicroRuntime {
             recursive_program,
         }
     }
+
     pub fn safe(&self) -> bool {
         self.unprocessed_insertions.is_empty()
     }
@@ -347,52 +374,5 @@ mod tests {
         let actual_top: HashSet<(&str, &str)> = convert_fact!(runtime.query(&top_query));
         let expected_top: HashSet<(&str, &str)> = vec![("a", "c")].into_iter().collect();
         assert_eq!(expected_top, actual_top);
-    }
-
-    #[test]
-    fn test_query_program_same_generation() {
-        let program = program! {
-            sg(?x, ?y) <- [flat(?x, ?y)],
-            sg(?y, ?x) <- [sg(?x, ?y)],
-            sg(?x, ?y) <- [up(?x, ?z1), down(?z1, ?y)],
-            sg(?x, ?y) <- [up(?x, ?z1), sg(?z1, ?z2), down(?z2, ?y)]
-        };
-
-        let mut runtime = MicroRuntime::new(program.clone());
-
-        // Set up tree structure:
-        //       a1    a2   (flat connects these)
-        //      /  \  /  \
-        //    b1  b2 b3  b4
-        runtime.insert("up", ("b1", "a1")); // b1 up to a1
-        runtime.insert("up", ("b2", "a1")); // b2 up to a1
-        runtime.insert("up", ("b3", "a2")); // b3 up to a2
-        runtime.insert("up", ("b4", "a2")); // b4 up to a2
-
-        // Direct same-generation relationships
-        runtime.insert("flat", ("a1", "a2")); // a1 same gen as a2
-
-        runtime.insert("down", ("a1", "b1")); // a1 down to b1
-        runtime.insert("down", ("a1", "b2")); // a1 down to b2
-        runtime.insert("down", ("a2", "b3")); // a2 down to b3
-        runtime.insert("down", ("a2", "b4")); // a2 down to b4
-
-        runtime.poll();
-
-        // Query for nodes in same generation as b1 (should find b2, b3, b4)
-        let query = build_query!(sg("b1", _));
-        let results: HashSet<_> = convert_fact!(runtime.query(&query));
-
-        // b1 should be in same generation as b2, b3, and b4
-        let expected: HashSet<_> = vec![
-            ("b1", "b2"), // Same parent a1
-            ("b1", "b3"), // Through flat a1-a2
-            ("b1", "b4"), // Through flat a1-a2
-            ("b1", "b1"), // Every node is in same gen with itself
-        ]
-        .into_iter()
-        .collect();
-
-        assert_eq!(expected, results);
     }
 }

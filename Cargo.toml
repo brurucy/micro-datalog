@@ -29,3 +29,11 @@ path = "src/bin.rs"
 [profile.profiling]
 inherits = "release"
 debug = true
+
+[[test]]
+name = "magic_sets_tests"
+path = "test/magic_tests.rs"
+
+[[test]]
+name = "bottom-up_evaluation_with_magic_sets_tests"
+path = "test/query_program_bottom_up_tests.rs"
