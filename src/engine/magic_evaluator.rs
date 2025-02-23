@@ -7,13 +7,13 @@ use datalog_syntax::*;
 
 use super::datalog::MicroRuntime;
 
-pub struct MagicEvaluator<'a> {
-    processed: &'a mut RelationStorage,
-    unprocessed_insertions: &'a mut RelationStorage,
+pub struct MagicEvaluator {
+    processed: RelationStorage,
+    unprocessed_insertions: RelationStorage,
 }
 
-impl<'a> MagicEvaluator<'a> {
-    pub fn new(processed: &'a mut RelationStorage, unprocessed: &'a mut RelationStorage) -> Self {
+impl<'a> MagicEvaluator {
+    pub fn new(processed: RelationStorage, unprocessed: RelationStorage) -> Self {
         Self {
             processed,
             unprocessed_insertions: unprocessed,
