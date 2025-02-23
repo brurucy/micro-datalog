@@ -1,5 +1,8 @@
-use std::collections::{ HashMap, HashSet };
-use datalog_syntax::{ AnonymousGroundAtom, Atom, Term, TypedValue };
+use datalog_syntax::{AnonymousGroundAtom, Atom, Term, TypedValue};
+use std::collections::{HashMap, HashSet};
+use crate::helpers::subsumptive_helpers::{
+    subsumes
+};
 
 #[derive(Default)]
 pub struct SubsumptiveTable {
@@ -17,7 +20,7 @@ impl SubsumptiveTable {
         &mut self,
         pred: &str,
         pattern: Vec<Option<TypedValue>>,
-        facts: Vec<AnonymousGroundAtom>
+        facts: Vec<AnonymousGroundAtom>,
     ) {
         let entries = self.tables.entry(pred.to_string()).or_default();
         entries.push((pattern, facts));
@@ -26,7 +29,7 @@ impl SubsumptiveTable {
     pub fn find_subsuming(
         &self,
         predicate: &str,
-        pattern: &[Option<TypedValue>]
+        pattern: &[Option<TypedValue>],
     ) -> Option<&Vec<AnonymousGroundAtom>> {
         let table = self.tables.get(predicate)?;
         // Look for a table entry that subsumes this pattern
@@ -37,108 +40,18 @@ impl SubsumptiveTable {
         }
         None
     }
-}
-
-// Helper function to check if one pattern subsumes another
-fn subsumes(subsuming: &[Option<TypedValue>], subsumed: &[Option<TypedValue>]) -> bool {
-    if subsuming.len() != subsumed.len() {
-        return false;
-    }
-
-    subsuming
-        .iter()
-        .zip(subsumed)
-        .all(|(s, p)| {
-            match (s, p) {
-                (None, _) => true, // Free variable subsumes anything
-                (Some(s_val), Some(p_val)) => s_val == p_val,
-                _ => false,
-            }
-        })
-}
-
-pub fn create_subquery_pattern(
-    atom: &Atom,
-    bindings: &HashMap<String, TypedValue>
-) -> Vec<Option<TypedValue>> {
-    println!("\nCreating subquery pattern for atom {:?} with bindings {:?}", atom, bindings);
-
-    atom.terms
-        .iter()
-        .map(|term| {
-            match term {
-                Term::Constant(val) => {
-                    println!("Term is constant: {:?}", val);
-                    Some(val.clone())
-                }
-                Term::Variable(var) => {
-                    match bindings.get(var) {
-                        Some(val) => {
-                            println!("Found binding for variable {}: {:?}", var, val);
-                            Some(val.clone())
-                        }
-                        None => {
-                            println!("No binding for variable {}", var);
-                            None
-                        }
-                    }
-                }
-            }
-        })
-        .collect()
-}
-
-pub fn update_bindings(
-    bindings: &mut HashMap<String, TypedValue>,
-    atom: &Atom,
-    results: &HashSet<AnonymousGroundAtom>
-) {
-    println!("\nUpdating bindings for atom {:?} with results {:?}", atom, results);
-
-    // Get one result to update bindings (ideally we'd handle multiple results)
-    if let Some(result) = results.iter().next() {
-        // Map each variable in the atom to its corresponding value in the result
-        atom.terms
-            .iter()
-            .enumerate()
-            .for_each(|(i, term)| {
-                if let Term::Variable(var) = term {
-                    bindings.insert(var.clone(), result[i].clone());
-                    println!("Updated binding: {} = {:?}", var, result[i]);
-                }
-            });
-    }
-}
-
-pub fn create_result(
-    head: &Atom,
-    bindings: &HashMap<String, TypedValue>
-) -> Option<AnonymousGroundAtom> {
-    println!("\nCreating result for head {:?} with bindings {:?}", head, bindings);
-
-    // Try to create result by substituting variables with their bindings
-    let mut result = Vec::new();
-
-    for term in &head.terms {
-        match term {
-            Term::Constant(val) => {
-                println!("Adding constant value: {:?}", val);
-                result.push(val.clone());
-            }
-            Term::Variable(var) => {
-                if let Some(val) = bindings.get(var) {
-                    println!("Adding bound value for {}: {:?}", var, val);
-                    result.push(val.clone());
-                } else {
-                    println!("Missing binding for variable {}", var);
-                    return None; // Can't create result if any variable is unbound
-                }
+    pub fn print_contents(&self) {
+        println!("\nTable Contents:");
+        for (pred, entries) in &self.tables {
+            println!("Predicate: {}", pred);
+            for (pattern, facts) in entries {
+                println!("  Pattern: {:?}", pattern);
+                println!("  Facts: {:?}", facts);
             }
         }
     }
-
-    Some(result)
 }
+
 
 #[cfg(test)]
 mod tests {
@@ -167,10 +80,17 @@ mod tests {
         // Insert a fact with a pattern
         let fact = vec![TypedValue::from("john"), TypedValue::from("bob")];
         let pattern = vec![Some(TypedValue::from("john")), None];
-        table.insert("parent", pattern.clone(), vec![fact.clone()].into_iter().collect());
+        table.insert(
+            "parent",
+            pattern.clone(),
+            vec![fact.clone()].into_iter().collect(),
+        );
 
         // Test finding subsuming pattern
-        let query_pattern = vec![Some(TypedValue::from("john")), Some(TypedValue::from("bob"))];
+        let query_pattern = vec![
+            Some(TypedValue::from("john")),
+            Some(TypedValue::from("bob")),
+        ];
         let result = table.find_subsuming("parent", &query_pattern);
         assert!(result.is_some());
         assert!(result.unwrap().contains(&fact));

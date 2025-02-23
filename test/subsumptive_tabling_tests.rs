@@ -20,13 +20,13 @@ fn test_query_program_basic_ancestor() {
     runtime.insert("parent", vec!["bob", "mary"]);
 
     let mut evaluator = SubsumptiveEvaluator::new(
-        &mut runtime.processed,
-        &mut runtime.unprocessed_insertions,
-        program.clone(),
+        runtime.processed,
+        runtime.unprocessed_insertions,
+        program
     );
 
     let query = build_query!(ancestor("john", _));
-    let results = convert_fact!(evaluator.evaluate_query(&query, program));
+    let results = convert_fact!(evaluator.evaluate_query(&query));
 
     let expected: HashSet<_> = vec![("john", "bob"), ("john", "mary")]
         .into_iter()
