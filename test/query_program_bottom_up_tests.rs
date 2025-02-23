@@ -32,8 +32,6 @@ fn test_query_program_same_generation() {
     runtime.insert("down", ("a2", "b3")); // a2 down to b3
     runtime.insert("down", ("a2", "b4")); // a2 down to b4
 
-    runtime.poll();
-
     // Query for nodes in same generation as b1 (should find b2, b3, b4)
     let query = build_query!(sg("b1", _));
     let results: HashSet<_> = convert_fact!(runtime.query_program(&query, program, "Bottom-up"));

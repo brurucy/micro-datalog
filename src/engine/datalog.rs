@@ -1,11 +1,15 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
 use crate::engine::storage::RelationStorage;
+use crate::engine::subsumptive_table::SubsumptiveTable;
 use crate::evaluation::query::pattern_match;
 use crate::evaluation::semi_naive::semi_naive_evaluation;
 use crate::helpers::helpers::split_program;
 use crate::program_transformations::dependency_graph::sort_program;
+use crate::program_transformations::magic_sets::{
+    apply_magic_transformation, create_magic_seed_fact,
+};
 use datalog_syntax::*;
 use indexmap::IndexSet;
 
@@ -87,9 +91,26 @@ impl MicroRuntime {
         program: Program,
         strategy: &str,
     ) -> Result<impl Iterator<Item = AnonymousGroundAtom> + 'a, String> {
-        let mut evaluator =
-            MagicEvaluator::new(&mut self.processed, &mut self.unprocessed_insertions);
-        evaluator.evaluate_query(query, program)
+        match strategy {
+            "Bottom-up" => {
+                let mut evaluator = MagicEvaluator::new(
+                    self.processed.clone(),
+                    self.unprocessed_insertions.clone(),
+                );
+               evaluator.evaluate_query(query, program)
+            }
+            "Top-down" => {
+                let mut evaluator = SubsumptiveEvaluator::new(
+                    self.processed.clone(),
+                    self.unprocessed_insertions.clone(),
+                    program,
+                );
+
+              let res = evaluator.evaluate_query(query);
+              Ok(res.into_iter())
+            }
+            _ => return Err("Did you invent a new evaluation strategy?".to_string()),
+        }
     }
 
     pub fn new(program: Program) -> Self {

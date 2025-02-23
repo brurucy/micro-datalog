@@ -39,5 +39,9 @@ name = "bottom-up_evaluation_with_magic_sets_tests"
 path = "test/query_program_bottom_up_tests.rs"
 
 [[test]]
+name = "top-down_evaluation_with_magic_sets_tests"
+path = "test/query_program_top_down_tests.rs"
+
+[[test]]
 name = "subsumptive_tabling_tests"
 path = "test/subsumptive_tabling_tests.rs"

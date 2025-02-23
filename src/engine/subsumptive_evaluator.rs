@@ -29,7 +29,7 @@ impl<'a> SubsumptiveEvaluator {
     pub fn evaluate_query<'b>(
         &mut self,
         query: &'b Query,
-    ) -> Result<impl Iterator<Item = AnonymousGroundAtom> + 'a, String> {
+    ) -> HashSet<Vec<TypedValue>> {
         println!("Query: {}({:?})", query.symbol, query.matchers);
         let mut table = SubsumptiveTable::new();
         let mut seen_queries = HashSet::new();
@@ -64,7 +64,7 @@ impl<'a> SubsumptiveEvaluator {
             &mut table,
             &mut seen_queries,
             0, // Start with depth 0
-        )?;
+        );
 
         println!("\n=== Final Results ===");
         println!("Results: {:?}", results);
@@ -72,17 +72,17 @@ impl<'a> SubsumptiveEvaluator {
         table.print_contents();
 
         // Return the results as an iterator
-        Ok(results.into_iter())
+        results
     }
 
-    fn evaluate_subquery(
+    pub fn evaluate_subquery(
         &mut self,
         atom: &Atom,
         pattern: &[Option<TypedValue>],
         table: &mut SubsumptiveTable,
         seen_queries: &mut HashSet<(String, Vec<Option<TypedValue>>)>,
         depth: usize,
-    ) -> Result<HashSet<AnonymousGroundAtom>, String> {
+    ) ->HashSet<AnonymousGroundAtom> {
         let indent = "  ".repeat(depth);
         println!("\n{}=== Evaluating Subquery (Depth {}) ===", indent, depth);
         println!("{}Predicate: {}", indent, atom.symbol);
@@ -96,7 +96,7 @@ impl<'a> SubsumptiveEvaluator {
                 cached_results
             );
 
-            return Ok(cached_results.iter().cloned().collect());
+            return cached_results.iter().cloned().collect();
         }
 
         let mut all_results = HashSet::new();
@@ -109,7 +109,7 @@ impl<'a> SubsumptiveEvaluator {
                 "  ".repeat(depth)
             );
 
-            return Ok(all_results);
+            return all_results;
         }
         seen_queries.insert(query_key.clone());
 
@@ -161,7 +161,7 @@ impl<'a> SubsumptiveEvaluator {
                 seen_queries,
                 &mut rule_results,
                 depth + 1,
-            )?;
+            );
             println!("{}Rule results: {:?}", "  ".repeat(depth), rule_results);
             all_results.extend(rule_results);
         }
@@ -180,7 +180,7 @@ impl<'a> SubsumptiveEvaluator {
         }
 
         println!("{}Final results: {:?}", "  ".repeat(depth), all_results);
-        Ok(all_results)
+        all_results
     }
 
     fn evaluate_rule_subsumptive(
@@ -191,7 +191,7 @@ impl<'a> SubsumptiveEvaluator {
         seen_queries: &mut HashSet<(String, Vec<Option<TypedValue>>)>,
         results: &mut HashSet<AnonymousGroundAtom>,
         depth: usize,
-    ) -> Result<(), String> {
+    ) -> () {
         let indent = "  ".repeat(depth);
         println!("\n{}=== Evaluating Rule Subsumptive ===", indent);
         println!("{}Rule: {:?}", indent, rule);
@@ -240,7 +240,7 @@ impl<'a> SubsumptiveEvaluator {
         seen_queries: &mut HashSet<(String, Vec<Option<TypedValue>>)>,
         results: &mut HashSet<AnonymousGroundAtom>,
         depth: usize,
-    ) -> Result<(), String> {
+    ) -> () {
         let indent = "  ".repeat(depth);
         println!("\n{}=== Evaluating Body at position {} ===", indent, pos);
         println!("{}Current bindings: {:?}", indent, bindings);
@@ -253,7 +253,7 @@ impl<'a> SubsumptiveEvaluator {
             } else {
                 println!("{}Could not create result - incomplete bindings", indent);
             }
-            return Ok(());
+            
         }
 
         let atom = &body[pos];
@@ -266,7 +266,7 @@ impl<'a> SubsumptiveEvaluator {
         // For base predicates, directly match against facts
         if !is_derived_predicate(&self.program, &atom.symbol) {
             println!("{}Processing base predicate", indent);
-            let base_results = self.match_base_predicate(atom, &pattern)?;
+            let base_results = self.match_base_predicate(atom, &pattern);
             println!("{}Found {} base results", indent, base_results.len());
 
             for base_result in base_results {
@@ -288,7 +288,7 @@ impl<'a> SubsumptiveEvaluator {
                     seen_queries,
                     results,
                     depth + 1,
-                )?;
+                );
             }
         } else {
             println!("{}Processing derived predicate", indent);
@@ -299,7 +299,7 @@ impl<'a> SubsumptiveEvaluator {
             };
 
             let subresults =
-                self.evaluate_subquery(&atom_obj, &pattern, table, seen_queries, depth + 1)?;
+                self.evaluate_subquery(&atom_obj, &pattern, table, seen_queries, depth + 1);
             println!("{}Found {} derived results", indent, subresults.len());
 
             for subresult in subresults {
@@ -318,7 +318,7 @@ impl<'a> SubsumptiveEvaluator {
                     seen_queries,
                     results,
                     depth + 1,
-                )?;
+                );
             }
         }
 
@@ -326,14 +326,13 @@ impl<'a> SubsumptiveEvaluator {
             "{}=== Completed body evaluation at position {} ===",
             indent, pos
         );
-        Ok(())
     }
 
     fn match_base_predicate(
         &self,
         atom: &Atom,
         pattern: &[Option<TypedValue>],
-    ) -> Result<HashSet<AnonymousGroundAtom>, String> {
+    ) -> HashSet<AnonymousGroundAtom> {
         println!("\n=== Matching Base Predicate ===");
         println!("Atom: {:?}", atom);
         println!("Pattern: {:?}", pattern);
@@ -389,7 +388,7 @@ impl<'a> SubsumptiveEvaluator {
         }
 
         println!("Total matches found: {}", results.len());
-        Ok(results)
+        results
     }
 
 }
@@ -444,7 +443,7 @@ mod tests {
             Some(TypedValue::from("mary")),
         ];
 
-        let results = evaluator.match_base_predicate(&atom, &pattern).unwrap();
+        let results = evaluator.match_base_predicate(&atom, &pattern);
         assert_eq!(results.len(), 1);
         assert!(results
             .iter()
@@ -471,7 +470,7 @@ mod tests {
         // Pattern matching "parent(john, _)"
         let pattern = vec![Some(TypedValue::from("john")), None];
 
-        let results = evaluator.match_base_predicate(&atom, &pattern).unwrap();
+        let results = evaluator.match_base_predicate(&atom, &pattern);
         assert_eq!(results.len(), 2); // Should match both of John's children
         assert!(results
             .iter()
@@ -501,7 +500,7 @@ mod tests {
         // Pattern matching "parent(_, _)"
         let pattern = vec![None, None];
 
-        let results = evaluator.match_base_predicate(&atom, &pattern).unwrap();
+        let results = evaluator.match_base_predicate(&atom, &pattern);
         assert_eq!(results.len(), 3); // Should match all parent facts
     }
 
@@ -525,7 +524,7 @@ mod tests {
         // Pattern matching "parent(unknown, _)"
         let pattern = vec![Some(TypedValue::from("unknown")), None];
 
-        let results = evaluator.match_base_predicate(&atom, &pattern).unwrap();
+        let results = evaluator.match_base_predicate(&atom, &pattern);
         assert_eq!(results.len(), 0); // Should find no matches
     }
 
@@ -548,7 +547,7 @@ mod tests {
 
         let pattern = vec![None, None];
 
-        let results = evaluator.match_base_predicate(&atom, &pattern).unwrap();
+        let results = evaluator.match_base_predicate(&atom, &pattern);
         assert_eq!(results.len(), 0); // Should return empty set for nonexistent predicate
     }
 }
