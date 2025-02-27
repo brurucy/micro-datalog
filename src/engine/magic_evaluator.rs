@@ -1,3 +1,5 @@
+use std::collections::HashSet;
+
 use crate::engine::storage::RelationStorage;
 use crate::evaluation::query::pattern_match;
 use crate::program_transformations::magic_sets::{
@@ -22,9 +24,9 @@ impl<'a> MagicEvaluator {
 
     pub fn evaluate_query<'b>(
         &mut self,
-        query: &'b Query,
+        query: &Query,
         program: Program,
-    ) -> Result<impl Iterator<Item = AnonymousGroundAtom> + 'a, String> {
+    ) -> HashSet<AnonymousGroundAtom> {
         // Create adorned query symbol by combining original symbol with binding pattern
         let pattern_string: String = query
             .matchers
@@ -104,14 +106,14 @@ impl<'a> MagicEvaluator {
 
         runtime.poll();
 
-        let result: Vec<_> = runtime
+        let results: HashSet<AnonymousGroundAtom> = runtime
             .processed
-            .get_relation(query_temp.symbol)
+            .get_relation(&query_temp.symbol)
             .iter()
             .filter(|fact| pattern_match(&query_temp, fact))
             .map(|fact| (**fact).clone())
             .collect();
 
-        return Ok(result.into_iter());
+        return results;
     }
 }

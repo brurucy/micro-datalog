@@ -86,18 +86,19 @@ impl MicroRuntime {
     }
 
     pub fn query_program<'a>(
-        &'a mut self,
-        query: &'a Query,
+        &mut self,
+        query: &Query,
         program: Program,
         strategy: &str,
-    ) -> Result<impl Iterator<Item = AnonymousGroundAtom> + 'a, String> {
+    ) -> Result<impl Iterator<Item = AnonymousGroundAtom> + '_, String> {
         match strategy {
             "Bottom-up" => {
                 let mut evaluator = MagicEvaluator::new(
                     self.processed.clone(),
                     self.unprocessed_insertions.clone(),
                 );
-               evaluator.evaluate_query(query, program)
+               let result = evaluator.evaluate_query(query, program);
+               Ok(result.into_iter())
             }
             "Top-down" => {
                 let mut evaluator = SubsumptiveEvaluator::new(
