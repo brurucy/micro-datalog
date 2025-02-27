@@ -1,22 +1,30 @@
+use std::collections::{HashMap, HashSet};
+use std::sync::Arc;
+
 use crate::engine::storage::RelationStorage;
+use crate::engine::subsumptive_table::SubsumptiveTable;
 use crate::evaluation::query::pattern_match;
 use crate::evaluation::semi_naive::semi_naive_evaluation;
 use crate::helpers::helpers::split_program;
 use crate::program_transformations::dependency_graph::sort_program;
+use crate::program_transformations::magic_sets::{
+    apply_magic_transformation, create_magic_seed_fact,
+};
 use datalog_syntax::*;
 use indexmap::IndexSet;
 
 use super::magic_evaluator::MagicEvaluator;
+use super::subsumptive_evaluator::SubsumptiveEvaluator;
 
 /// A Datalog runtime engine that supports incremental evaluation of rules using semi-naive strategy
 #[derive(Default)]
 pub struct MicroRuntime {
     /// Storage for facts that have gone through all fixpoint iterations
     /// These facts represent the current state of derived relations
-    pub(crate) processed: RelationStorage,
+    pub processed: RelationStorage,
 
     /// Storage for newly inserted facts that haven't been processed yet
-    pub(crate) unprocessed_insertions: RelationStorage,
+    pub unprocessed_insertions: RelationStorage,
 
     /// Contains rules that can be evaluated in a single pass without fixpoint iteration
     nonrecursive_program: Program,
@@ -78,14 +86,32 @@ impl MicroRuntime {
     }
 
     pub fn query_program<'a>(
-        &'a mut self,
-        query: &'a Query,
+        &mut self,
+        query: &Query,
         program: Program,
         strategy: &str,
-    ) -> Result<impl Iterator<Item = AnonymousGroundAtom> + 'a, String> {
-        let mut evaluator =
-            MagicEvaluator::new(&mut self.processed, &mut self.unprocessed_insertions);
-        evaluator.evaluate_query(query, program)
+    ) -> Result<impl Iterator<Item = AnonymousGroundAtom> + '_, String> {
+        match strategy {
+            "Bottom-up" => {
+                let mut evaluator = MagicEvaluator::new(
+                    self.processed.clone(),
+                    self.unprocessed_insertions.clone(),
+                );
+               let result = evaluator.evaluate_query(query, program);
+               Ok(result.into_iter())
+            }
+            "Top-down" => {
+                let mut evaluator = SubsumptiveEvaluator::new(
+                    self.processed.clone(),
+                    self.unprocessed_insertions.clone(),
+                    program,
+                );
+
+              let res = evaluator.evaluate_query(query);
+              Ok(res.into_iter())
+            }
+            _ => return Err("Did you invent a new evaluation strategy?".to_string()),
+        }
     }
 
     pub fn new(program: Program) -> Self {

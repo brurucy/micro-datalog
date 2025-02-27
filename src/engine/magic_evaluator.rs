@@ -1,3 +1,5 @@
+use std::collections::HashSet;
+
 use crate::engine::storage::RelationStorage;
 use crate::evaluation::query::pattern_match;
 use crate::program_transformations::magic_sets::{
@@ -7,13 +9,13 @@ use datalog_syntax::*;
 
 use super::datalog::MicroRuntime;
 
-pub struct MagicEvaluator<'a> {
-    processed: &'a mut RelationStorage,
-    unprocessed_insertions: &'a mut RelationStorage,
+pub struct MagicEvaluator {
+    processed: RelationStorage,
+    unprocessed_insertions: RelationStorage,
 }
 
-impl<'a> MagicEvaluator<'a> {
-    pub fn new(processed: &'a mut RelationStorage, unprocessed: &'a mut RelationStorage) -> Self {
+impl<'a> MagicEvaluator {
+    pub fn new(processed: RelationStorage, unprocessed: RelationStorage) -> Self {
         Self {
             processed,
             unprocessed_insertions: unprocessed,
@@ -22,9 +24,9 @@ impl<'a> MagicEvaluator<'a> {
 
     pub fn evaluate_query<'b>(
         &mut self,
-        query: &'b Query,
+        query: &Query,
         program: Program,
-    ) -> Result<impl Iterator<Item = AnonymousGroundAtom> + 'b, String> {
+    ) -> HashSet<AnonymousGroundAtom> {
         // Create adorned query symbol by combining original symbol with binding pattern
         let pattern_string: String = query
             .matchers
@@ -104,14 +106,14 @@ impl<'a> MagicEvaluator<'a> {
 
         runtime.poll();
 
-        let result: Vec<_> = runtime
+        let results: HashSet<AnonymousGroundAtom> = runtime
             .processed
-            .get_relation(query_temp.symbol)
+            .get_relation(&query_temp.symbol)
             .iter()
             .filter(|fact| pattern_match(&query_temp, fact))
             .map(|fact| (**fact).clone())
             .collect();
 
-        return Ok(result.into_iter());
+        return results;
     }
 }
