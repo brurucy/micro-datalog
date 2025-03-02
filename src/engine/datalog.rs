@@ -96,8 +96,9 @@ impl MicroRuntime {
                 let mut evaluator = MagicEvaluator::new(
                     self.processed.clone(),
                     self.unprocessed_insertions.clone(),
+                    program
                 );
-               let result = evaluator.evaluate_query(query, program);
+               let result = evaluator.evaluate_query(query);
                Ok(result.into_iter())
             }
             "Top-down" => {

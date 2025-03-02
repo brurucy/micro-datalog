@@ -12,20 +12,21 @@ use super::datalog::MicroRuntime;
 pub struct MagicEvaluator {
     processed: RelationStorage,
     unprocessed_insertions: RelationStorage,
+    program: Program
 }
 
 impl<'a> MagicEvaluator {
-    pub fn new(processed: RelationStorage, unprocessed: RelationStorage) -> Self {
+    pub fn new(processed: RelationStorage, unprocessed: RelationStorage, program: Program) -> Self {
         Self {
             processed,
             unprocessed_insertions: unprocessed,
+            program: program
         }
     }
 
     pub fn evaluate_query<'b>(
         &mut self,
         query: &Query,
-        program: Program,
     ) -> HashSet<AnonymousGroundAtom> {
         // Create adorned query symbol by combining original symbol with binding pattern
         let pattern_string: String = query
@@ -44,12 +45,12 @@ impl<'a> MagicEvaluator {
             symbol: &adorned_symbol,
         };
 
-        let magic_program = apply_magic_transformation(&program, query);
+        let magic_program = apply_magic_transformation(&self.program, query);
 
         let mut runtime = MicroRuntime::new(magic_program.clone());
 
         for (rel_name, facts) in &self.processed.inner {
-            if !program
+            if !&self.program
                 .inner
                 .iter()
                 .any(|rule| rule.head.symbol == *rel_name)
@@ -64,7 +65,7 @@ impl<'a> MagicEvaluator {
 
         // Also collect unprocessed insertions for base predicates
         for (rel_name, facts) in &self.unprocessed_insertions.inner {
-            if !program
+            if !&self.program
                 .inner
                 .iter()
                 .any(|rule| rule.head.symbol == *rel_name)
