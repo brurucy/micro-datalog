@@ -6,7 +6,7 @@ use std::sync::Arc;
 
 use super::index_storage::{EphemeralValue, IndexStorage};
 pub type FactStorage = IndexSet<Arc<AnonymousGroundAtom>, ahash::RandomState>;
-#[derive(Default)]
+#[derive(Default, Clone)]
 pub struct RelationStorage {
     pub(crate) inner: HashMap<String, FactStorage>,
 }

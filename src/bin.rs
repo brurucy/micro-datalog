@@ -50,11 +50,22 @@ fn main() {
     
     let query = build_query!(tc(4, _));
     let answer: Vec<_> = micro_runtime
-        .query_program(&query, program, "Bottom-up")
+        .query_program(&query, program.clone(), "Bottom-up")
         .unwrap()
         .into_iter()
         .collect();
-    println!("micro: {} milis", now.elapsed().as_millis());
+    println!("micro bottom-up: {} milis", now.elapsed().as_millis());
+    println!("inferred tuples: {}", answer.len());
+
+    let now = Instant::now();
+    
+    let query = build_query!(tc(4, _));
+    let answer: Vec<_> = micro_runtime
+        .query_program(&query, program, "Top-down")
+        .unwrap()
+        .into_iter()
+        .collect();
+    println!("micro top-down: {} milis", now.elapsed().as_millis());
     println!("inferred tuples: {}", answer.len());
 
     let now = Instant::now();
