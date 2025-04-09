@@ -34,7 +34,7 @@ fn test_query_program_same_generation() {
 
     // Query for nodes in same generation as b1 (should find b2, b3, b4)
     let query = build_query!(sg("b1", _));
-    let results: HashSet<_> = convert_fact!(runtime.query_program(&query, program, "Bottom-up"));
+    let results: HashSet<_> = convert_fact!(runtime.query_program(&query, program, &micro_datalog::engine::datalog::Strategy::BottomUp));
 
     // b1 should be in same generation as b2, b3, and b4
     let expected: HashSet<_> = vec![
@@ -64,7 +64,7 @@ fn test_query_program_basic_ancestor() {
 
     // Query for ancestors of john
     let query = build_query!(ancestor("john", _));
-    let results: HashSet<_> = convert_fact!(runtime.query_program(&query, program, "Bottom-up"));
+    let results: HashSet<_> = convert_fact!(runtime.query_program(&query, program, &micro_datalog::engine::datalog::Strategy::BottomUp));
 
     // Expected results - john is ancestor of both bob and mary
     let expected: HashSet<_> = vec![("john", "bob"), ("john", "mary")]
@@ -89,7 +89,7 @@ fn test_query_program_ff() {
 
     // Query for ancestors of john
     let query = build_query!(ancestor(_, _));
-    let results: HashSet<_> = convert_fact!(runtime.query_program(&query, program, "Bottom-up"));
+    let results: HashSet<_> = convert_fact!(runtime.query_program(&query, program, &micro_datalog::engine::datalog::Strategy::BottomUp));
 
     // Expected results - john is ancestor of both bob and mary
     let expected: HashSet<_> = vec![("john", "bob"), ("bob", "mary"), ("john", "mary")]

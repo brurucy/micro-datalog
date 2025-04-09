@@ -40,81 +40,68 @@ impl<'a> MagicEvaluator {
 
         let adorned_symbol = format!("{}_{}", query.symbol, pattern_string);
 
+        // Create temporary query with adorned symbol
         let query_temp = Query {
             matchers: query.matchers.clone(),
             symbol: &adorned_symbol,
         };
 
+        // Apply magic transformation once
         let magic_program = apply_magic_transformation(&self.program, query);
 
-        let mut runtime = MicroRuntime::new(magic_program.clone());
+        // Create runtime with the transformed program
+        let mut runtime = MicroRuntime::new(magic_program);
 
-        for (rel_name, facts) in &self.processed.inner {
-            if !&self.program
-                .inner
-                .iter()
-                .any(|rule| rule.head.symbol == *rel_name)
-            {
-                if !facts.is_empty() {
-                    runtime
-                        .processed
-                        .insert_registered(rel_name, facts.iter().cloned());
-                }
-            }
-        }
+        // Pre-compute base predicates to avoid repeated checks
+        let base_predicates: HashSet<_> = self.program
+            .inner
+            .iter()
+            .map(|rule| &rule.head.symbol)
+            .collect();
 
-        // Also collect unprocessed insertions for base predicates
-        for (rel_name, facts) in &self.unprocessed_insertions.inner {
-            if !&self.program
-                .inner
-                .iter()
-                .any(|rule| rule.head.symbol == *rel_name)
-            {
-                if !facts.is_empty() {
-                    runtime
-                        .unprocessed_insertions
-                        .insert_registered(&rel_name, facts.iter().cloned());
-                }
-            }
-        }
-
-        // Also initialize storage for all adorned predicates
-        for rule in magic_program.inner {
-            runtime
-                .unprocessed_insertions
-                .inner
-                .entry(rule.head.symbol.clone())
-                .or_default();
+        // Initialize all relations in one pass
+        let mut all_relations = HashSet::new();
+        for rule in &self.program.inner {
+            all_relations.insert(rule.head.symbol.clone());
             for body_atom in &rule.body {
-                runtime
-                    .unprocessed_insertions
-                    .inner
-                    .entry(body_atom.symbol.clone())
-                    .or_default();
+                all_relations.insert(body_atom.symbol.clone());
+            }
+        }
+
+        // Initialize storage for all relations
+        for rel_name in all_relations {
+            runtime.unprocessed_insertions.inner.entry(rel_name).or_default();
+        }
+
+        // Transfer base facts in a single pass
+        for (rel_name, facts) in &self.processed.inner {
+            if !base_predicates.contains(rel_name) && !facts.is_empty() {
+                runtime.processed.insert_registered(rel_name, facts.iter().cloned());
+            }
+        }
+
+        // Transfer unprocessed facts in a single pass
+        for (rel_name, facts) in &self.unprocessed_insertions.inner {
+            if !base_predicates.contains(rel_name) && !facts.is_empty() {
+                runtime.unprocessed_insertions.insert_registered(rel_name, facts.iter().cloned());
             }
         }
 
         // Add magic seed fact
         let (magic_pred, seed_fact) = create_magic_seed_fact(query);
-
-        runtime
-            .unprocessed_insertions
-            .inner
-            .entry(magic_pred.clone())
-            .or_default();
-
+        runtime.unprocessed_insertions.inner.entry(magic_pred.clone()).or_default();
         runtime.insert(&magic_pred, seed_fact);
 
+        // Evaluate the program
         runtime.poll();
 
-        let results: HashSet<AnonymousGroundAtom> = runtime
+        // Collect results with pattern matching
+        runtime
             .processed
             .get_relation(&query_temp.symbol)
             .iter()
             .filter(|fact| pattern_match(&query_temp, fact))
             .map(|fact| (**fact).clone())
-            .collect();
-
-        return results;
+            .collect()
     }
 }

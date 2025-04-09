@@ -33,6 +33,11 @@ pub struct MicroRuntime {
     recursive_program: Program,
 }
 
+pub enum Strategy {
+    BottomUp,
+    TopDown
+}
+
 impl MicroRuntime {
     pub fn insert(&mut self, relation: &str, ground_atom: impl Into<Fact>) -> bool {
         self.unprocessed_insertions
@@ -89,10 +94,10 @@ impl MicroRuntime {
         &mut self,
         query: &Query,
         program: Program,
-        strategy: &str,
+        strategy: &Strategy,
     ) -> Result<impl Iterator<Item = AnonymousGroundAtom> + '_, String> {
         match strategy {
-            "Bottom-up" => {
+            Strategy::BottomUp => {
                 let mut evaluator = MagicEvaluator::new(
                     self.processed.clone(),
                     self.unprocessed_insertions.clone(),
@@ -101,7 +106,7 @@ impl MicroRuntime {
                let result = evaluator.evaluate_query(query);
                Ok(result.into_iter())
             }
-            "Top-down" => {
+            Strategy::TopDown => {
                 let mut evaluator = SubsumptiveEvaluator::new(
                     self.processed.clone(),
                     self.unprocessed_insertions.clone(),
@@ -111,7 +116,6 @@ impl MicroRuntime {
               let res = evaluator.evaluate_query(query);
               Ok(res.into_iter())
             }
-            _ => return Err("Did you invent a new evaluation strategy?".to_string()),
         }
     }
 

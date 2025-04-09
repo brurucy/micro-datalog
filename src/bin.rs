@@ -2,8 +2,17 @@ use ascent::ascent;
 use crepe::crepe;
 use datalog_rule_macro::program;
 use datalog_syntax::*;
+use itertools::*;
 use micro_datalog::engine::datalog::MicroRuntime;
 use std::time::Instant;
+
+struct BenchmarkResult {
+    strategy: String,
+    batch_size: usize,
+    cumulative_edges: usize,
+    execution_time_micros: u128,
+    inferred_tuples: usize,
+}
 
 //TC benchmark
 crepe! {
@@ -31,161 +40,98 @@ fn main() {
         tc(?x, ?z) <- [e(?x, ?y), tc(?y, ?z)]
     };
 
-    let mut micro_runtime = MicroRuntime::new(program.clone());
-    let mut ascnt_runtime = AscentProgram::default();
-    let mut crepe_runtime = Crepe::new();
+    let mut streaming_micro = MicroRuntime::new(program.clone());
+    let mut streaming_micro_magic = MicroRuntime::new(program.clone());
+    let mut streaming_micro_tabling = MicroRuntime::new(program.clone());
 
-    let data = include_str!("../data/graph_dense.txt");
-    data.lines().into_iter().for_each(|line| {
-        let triple: Vec<_> = line.split(" ").collect();
-        let from: usize = triple[0].parse().unwrap();
-        let to: usize = triple[1].parse().unwrap();
-
-        micro_runtime.insert("e", (from, to));
-        crepe_runtime.e.push(E(from, to));
-        ascnt_runtime.e.push((from, to));
-    });
-
-    let now = Instant::now();
-    
-    let query = build_query!(tc(4, _));
-    let answer: Vec<_> = micro_runtime
-        .query_program(&query, program.clone(), "Bottom-up")
-        .unwrap()
+    // Exponentially decreasing some value
+    let batch_size = 10;
+    let data = include_str!("../data/soc-Epinions1.txt");
+    let mut integral = vec![];
+    data.lines()
         .into_iter()
-        .collect();
-    println!("micro bottom-up: {} milis", now.elapsed().as_millis());
-    println!("inferred tuples: {}", answer.len());
-
-    let now = Instant::now();
-    
-    let query = build_query!(tc(4, _));
-    let answer: Vec<_> = micro_runtime
-        .query_program(&query, program, "Top-down")
-        .unwrap()
+        .chunks(batch_size)
         .into_iter()
-        .collect();
-    println!("micro top-down: {} milis", now.elapsed().as_millis());
-    println!("inferred tuples: {}", answer.len());
+        .for_each(|line_batch| {
+            for line in line_batch {
+                let triple: Vec<_> = line.split("	").collect();
+                let from: usize = triple[0].parse().unwrap();
+                let to: usize = triple[1].parse().unwrap();
 
-    let now = Instant::now();
-    let teecee = crepe_runtime.run();
-    let crepe_answer: Vec<_> = teecee
-        .0
-        .iter()
-        .filter(|tc| tc.0 == 4) // Filter where first element is 4
-        .collect();
-    println!("crepe: {} milis", now.elapsed().as_millis());
-    println!("inferred tuples: {}", crepe_answer.len());
+                streaming_micro.insert("e", (from, to));
+                integral.push((from, to));
+            }
 
-    let now = Instant::now();
-    ascnt_runtime.run();
-    let ascent_answer: Vec<_> = ascnt_runtime
-        .tc
-        .iter()
-        .filter(|(from, _to)| *from == 4)
-        .collect();
-    println!("ascent: {} milis", now.elapsed().as_millis());
-    println!("inferred tuples: {}", ascent_answer.len());
+            let now = Instant::now();
+            streaming_micro.poll();
+            println!("micro - streaming: {} milis", now.elapsed().as_micros());
+            let q = build_query!(tc(_, _));
+            let streaming_micro_runtime_answer: Vec<_> =
+                streaming_micro.query(&q).into_iter().collect();
+            println!("inferred tuples: {}", streaming_micro_runtime_answer.len());
+
+            let program_tabling = program.clone();
+            println!(
+                "micro - streaming magic sets: {} milis",
+                now.elapsed().as_micros()
+            );
+            let q = build_query!(tc(_, _));
+            let streaming_micro_runtime_answer: Vec<_> = streaming_micro_magic
+                .query_program(
+                    &q,
+                    program_tabling,
+                    &micro_datalog::engine::datalog::Strategy::BottomUp,
+                )
+                .into_iter()
+                .collect();
+            println!("inferred tuples: {}", streaming_micro_runtime_answer.len());
+
+            println!(
+                "micro - streaming top down: {} milis",
+                now.elapsed().as_micros()
+            );
+            let q = build_query!(tc(_, _));
+            let program_magic = program.clone();
+            let streaming_micro_runtime_answer: Vec<_> = streaming_micro_tabling
+                .query_program(
+                    &q,
+                    program_magic,
+                    &micro_datalog::engine::datalog::Strategy::TopDown,
+                )
+                .into_iter()
+                .collect();
+            println!("inferred tuples: {}", streaming_micro_runtime_answer.len());
+
+            let mut micro_runtime = MicroRuntime::new(program.clone());
+            for line in &integral {
+                micro_runtime.insert("e", (line.0.clone(), line.1.clone()));
+            }
+            let now = Instant::now();
+            micro_runtime.poll();
+            println!("micro - stupid: {} milis", now.elapsed().as_micros());
+            let q = build_query!(tc(_, _));
+            let micro_runtime_answer: Vec<_> = micro_runtime.query(&q).into_iter().collect();
+            println!("inferred tuples: {}", micro_runtime_answer.len());
+
+            let mut crepe_runtime = Crepe::new();
+            for line in &integral {
+                crepe_runtime.e.push(E(line.0.clone(), line.1.clone()));
+            }
+            let now = Instant::now();
+            let teecee = crepe_runtime.run();
+            println!("crepe: {} milis", now.elapsed().as_micros());
+            let crepe_answer: Vec<_> = teecee.0.iter().collect();
+            println!("inferred tuples: {}", crepe_answer.len());
+
+            let mut ascnt_runtime = AscentProgram::default();
+            for line in &integral {
+                ascnt_runtime.e.push((line.0.clone(), line.1.clone()))
+            }
+            let now = Instant::now();
+            ascnt_runtime.run();
+            println!("ascent: {} milis", now.elapsed().as_micros());
+            let ascent_answer: Vec<_> = ascnt_runtime.tc.iter().collect();
+            println!("inferred tuples: {}", ascent_answer.len());
+        });
 }
 
-// crepe! {
-//     @input
-//     struct RDF(usize, usize, usize);
-
-//     @output
-//     struct T(usize, usize, usize);
-
-//     T(s, p, o) <- RDF(s, p, o);
-//     T(y, 0, x) <- T(a, 3, x), T(y, a, z);
-//     T(z, 0, x) <- T(a, 4, x), T(y, a, z);
-//     T(x, 2, z) <- T(x, 2, y), T(y, 2, z);
-//     T(x, 1, z) <- T(x, 1, y), T(y, 1, z);
-//     T(z, 0, y) <- T(x, 1, y), T(z, 0, x);
-//     T(x, b, y) <- T(a, 2, b), T(x, a, y);
-// }
-
-// ascent! {
-//     relation RDF(usize, usize, usize);
-//     relation T(usize, usize, usize);
-
-//     T(s, p, o) <-- RDF(s, p, o);
-//     T(y, 0, x) <-- T(a, 3, x), T(y, a, z);
-//     T(z, 0, x) <-- T(a, 4, x), T(y, a, z);
-//     T(x, 2, z) <-- T(x, 2, y), T(y, 2, z);
-//     T(x, 1, z) <-- T(x, 1, y), T(y, 1, z);
-//     T(z, 0, y) <-- T(x, 1, y), T(z, 0, x);
-//     T(x, b, y) <-- T(a, 2, b), T(x, a, y);
-// }
-
-// const TYPE: &'static str = "<http://www.w3.org/1999/02/22-rdf-syntax-ns#type>";
-// const SUB_CLASS_OF: &'static str = "<http://www.w3.org/2000/01/rdf-schema#subClassOf>";
-// const SUB_PROPERTY_OF: &'static str = "<http://www.w3.org/2000/01/rdf-schema#subPropertyOf>";
-// const DOMAIN: &'static str = "<http://www.w3.org/2000/01/rdf-schema#domain>";
-// const RANGE: &'static str = "<http://www.w3.org/2000/01/rdf-schema#range>";
-// const PROPERTY: &'static str = "<http://www.w3.org/1999/02/22-rdf-syntax-ns#Property>";
-// const PREFIX: &'static str = "http://www.lehigh.edu/~zhp2/2004/0401/univ-bench.owl#";
-
-// fn parse_triple(line: &str) -> (&str, &str, &str) {
-//     let triple: Vec<_> = line.split(">").collect();
-
-//     return (triple[0], triple[1], triple[2]);
-// }
-
-// fn main() {
-//     let program = program! {
-//         T(?s, ?p, ?o) <- [RDF(?s, ?p, ?o)],
-//         T(?y, 0, ?x) <- [T(?a, 3, ?x), T(?y, ?a, ?z)],
-//         T(?z, 0, ?x) <- [T(?a, 4, ?x), T(?y, ?a, ?z)],
-//         T(?x, 2, ?z) <- [T(?x, 2, ?y), T(?y, 2, ?z)],
-//         T(?x, 1, ?z) <- [T(?x, 1, ?y), T(?y, 1, ?z)],
-//         T(?z, 0, ?y) <- [T(?x, 1, ?y), T(?z, 0, ?x)],
-//         T(?x, ?b, ?y) <- [T(?a, 2, ?b), T(?x, ?a, ?y)]
-//     };
-
-//     let mut rodeo = Rodeo::default();
-//     rodeo.get_or_intern(TYPE).into_usize();
-//     rodeo.get_or_intern(SUB_CLASS_OF);
-//     rodeo.get_or_intern(SUB_PROPERTY_OF);
-//     rodeo.get_or_intern(DOMAIN);
-//     rodeo.get_or_intern(RANGE);
-//     rodeo.get_or_intern(PROPERTY);
-
-//     let mut micro_runtime = MicroRuntime::new(program);
-//     let mut ascnt_runtime = AscentProgram::default();
-//     let mut crepe_runtime = Crepe::new();
-
-//     let data = include_str!("../data/lubm1.nt");
-//     data.lines().into_iter().for_each(|line| {
-//         if !line.contains("genid") {
-//             let triple: Vec<_> = line
-//                 .split_whitespace()
-//                 .map(|resource| resource.trim())
-//                 .collect();
-//             let s = rodeo.get_or_intern_static(triple[0]).into_usize();
-//             let p = rodeo.get_or_intern_static(triple[1]).into_usize();
-//             let o = rodeo.get_or_intern_static(triple[2]).into_usize();
-
-//             micro_runtime.insert("RDF", vec![s.into(), p.into(), o.into()]);
-//             crepe_runtime.rdf.push(RDF(s, p, o));
-//             ascnt_runtime.RDF.push((s, p, o));
-//         }
-//     });
-
-//     let now = Instant::now();
-//     micro_runtime.poll();
-//     println!("micro: {} milis", now.elapsed().as_millis());
-//     let q = build_query!(T(_, _, _));
-//     let answer: Vec<_> = micro_runtime.query(&q).unwrap().into_iter().collect();
-//     println!("inferred tuples: {}", answer.len());
-
-//     let now = Instant::now();
-//     let crepe_out = crepe_runtime.run();
-//     println!("crepe: {} milis", now.elapsed().as_millis());
-//     println!("inferred tuples: {}", crepe_out.0.len());
-
-//     let now = Instant::now();
-//     ascnt_runtime.run();
-//     println!("ascent: {} milis", now.elapsed().as_millis());
-//     println!("inferred tuples: {}", ascnt_runtime.T.len());
-// }
