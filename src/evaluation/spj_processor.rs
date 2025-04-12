@@ -153,13 +153,6 @@ fn get_join(
 }
 
 fn get_projection(rule: &Rule) -> Instruction {
-    // Strip adornment pattern from predicate name if present
-    let base_predicate = if let Some(underscore_pos) = rule.head.symbol.rfind('_') {
-        &rule.head.symbol[..underscore_pos]
-    } else {
-        &rule.head.symbol
-    };
-
     let projection_variable_targets: IndexSet<String> = rule
         .head
         .terms
@@ -181,33 +174,23 @@ fn get_projection(rule: &Rule) -> Instruction {
     let mut position_assuming_joins_are_natural = 0;
 
     rule.body.iter().for_each(|body_atom| {
-        // Strip adornment pattern from body atom name if present
-        let body_predicate = if let Some(underscore_pos) = body_atom.symbol.rfind('_') {
-            &body_atom.symbol[..underscore_pos]
-        } else {
-            &body_atom.symbol
-        };
+        body_atom.terms.iter().for_each(|term| {
+            match term {
+                Term::Variable(name) => {
+                    if !seen.contains(name) {
+                        seen.insert(name.clone());
 
-        // Only process variables from the original predicate
-        if body_predicate == base_predicate {
-            body_atom.terms.iter().for_each(|term| {
-                match term {
-                    Term::Variable(name) => {
-                        if !seen.contains(name) {
-                            seen.insert(name.clone());
-
-                            if projection_variable_targets.contains(name) {
-                                variable_location_assuming_joins_are_natural
-                                    .insert(name.clone(), position_assuming_joins_are_natural);
-                            }
+                        if projection_variable_targets.contains(name) {
+                            variable_location_assuming_joins_are_natural
+                                .insert(name.clone(), position_assuming_joins_are_natural);
                         }
                     }
-                    Term::Constant(_) => {}
                 }
+                Term::Constant(_) => {}
+            }
 
-                position_assuming_joins_are_natural += 1;
-            });
-        }
+            position_assuming_joins_are_natural += 1;
+        });
     });
 
     let projection = rule
