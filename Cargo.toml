@@ -19,6 +19,9 @@ petgraph = "0.6.4"
 rayon = "1.10.0"
 boxcar = "0.2.8"
 itertools = "0.14.0"
+plotters = "0.3.7"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
 
 [dev-dependencies]
 pretty_assertions = "1.4.0"

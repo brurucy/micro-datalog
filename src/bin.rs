@@ -206,23 +206,43 @@ fn main() -> Result<(), Box<dyn Error>> {
     };
 
     let data = include_str!("../data/soc-Epinions1.txt");
-    let batch_size = 10000;   // Process edges in batches of 1000
+    let total_edges = 20000;  // Limit to first 20000 edges
+    let batch_size = 1000;   // Process all edges in one batch
     let results_path = Path::new("results.json");
     let vis_dir = Path::new("visualizations");
 
+    // Take only the first 20000 edges
+    let limited_data: String = data.lines()
+        .take(total_edges)
+        .collect::<Vec<_>>()
+        .join("\n");
+
     // Run benchmarks and save results
-    println!("Running benchmarks on entire dataset with batch size {}...", batch_size);
-    let results = run_benchmarks(&program, data, batch_size)?;
-    save_benchmark_results(&results, results_path)?;
-    println!(
-        "Benchmarks completed and saved to {}",
-        results_path.display()
-    );
+    // println!("Running benchmarks on first {} edges...", total_edges);
+    // let results = run_benchmarks(&program, &limited_data, batch_size)?;
+    // save_benchmark_results(&results, results_path)?;
+    // println!(
+    //     "Benchmarks completed and saved to {}",
+    //     results_path.display()
+    // );
 
     // Load results and generate visualizations
     println!("Generating visualizations...");
     let results = load_benchmark_results(results_path)?;
-    visualize_results(&results, vis_dir)?;
+    
+    // Create visualization options with custom axis scales
+    let vis_options = micro_datalog::visualization::VisualizationOptions {
+        show_micro_streaming: false,
+        show_micro_magic: true,
+        show_micro_tabling: true,
+        show_crepe: false,
+        show_ascent: false,
+        x_scale: Some((0.0, 20000.0)),  // Set x-axis from 0 to 20000 edges
+        y_scale_performance: Some((0.0, 0.5)),  // Set performance y-axis from 0 to 5000ms
+        y_scale_tuples: Some((0.0, 100000.0)),  // Set tuples y-axis from 0 to 100000 tuples
+    };
+    
+    visualize_results(&results, vis_dir, &vis_options)?;
     println!("Visualizations saved to {}", vis_dir.display());
 
     Ok(())
