@@ -110,8 +110,9 @@ fn run_micro_benchmark(
         let query = build_query!(tc(_, _));
         let start = Instant::now();
         runtime.poll();
+        let execution_time = start.elapsed();
         let results: Vec<_> = runtime.query(&query).into_iter().collect();
-        (start.elapsed(), results.len())
+        (execution_time, results.len())
     }
 }
 
