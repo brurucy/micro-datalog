@@ -88,14 +88,16 @@ fn run_micro_benchmark(
     edges: &[(usize, usize)],
     strategy: Option<Strategy>,
 ) -> (Duration, usize) {
-    let start = Instant::now();
-
     if let Some(s) = strategy {
         let program = program! {
             tc(?x, ?y) <- [e(?x, ?y)],
             tc(?x, ?z) <- [e(?x, ?y), tc(?y, ?z)]
         };
+        for &(from, to) in edges {
+            runtime.insert("e", (from, to));
+        }
         let query = build_query!(tc(_, _));
+        let start = Instant::now();
         let results: Vec<_> = runtime
             .query_program(&query, program, &s)
             .into_iter()
@@ -105,28 +107,30 @@ fn run_micro_benchmark(
         for &(from, to) in edges {
             runtime.insert("e", (from, to));
         }
-        runtime.poll();
         let query = build_query!(tc(_, _));
+        let start = Instant::now();
+        runtime.poll();
         let results: Vec<_> = runtime.query(&query).into_iter().collect();
         (start.elapsed(), results.len())
     }
 }
 
 fn run_crepe_benchmark(edges: &[(usize, usize)]) -> (Duration, usize) {
-    let start = Instant::now();
     let mut runtime = Crepe::new();
-
     for &(from, to) in edges {
         runtime.e.push(E(from, to));
     }
 
+    let start = Instant::now();
     let results = runtime.run();
     (start.elapsed(), results.0.len())
 }
 
-fn run_ascent_benchmark(edges: &[(usize, usize)]) -> (Duration, usize) {
+fn run_ascent_benchmark(
+    runtime: &mut AscentProgram,
+    edges: &[(usize, usize)],
+) -> (Duration, usize) {
     let start = Instant::now();
-    let mut runtime = AscentProgram::default();
 
     for &(from, to) in edges {
         runtime.e.push((from, to));
@@ -156,12 +160,13 @@ fn run_benchmarks(
     batch_size: usize,
     args: &Args,
 ) -> Result<Vec<BenchmarkResult>, Box<dyn Error>> {
+    let mut integral = Vec::new();
+    let mut results = Vec::new();
+
     let mut streaming_micro = MicroRuntime::new(program.clone());
     let mut streaming_micro_magic = MicroRuntime::new(program.clone());
     let mut streaming_micro_tabling = MicroRuntime::new(program.clone());
-
-    let mut integral = Vec::new();
-    let mut results = Vec::new();
+    let mut ascent_runtime = AscentProgram::default();
 
     for line_batch in &data.lines().chunks(batch_size) {
         let batch: Vec<_> = line_batch
@@ -170,12 +175,12 @@ fn run_benchmarks(
 
         integral.extend_from_slice(&batch);
 
-        // Run selected benchmarks
+        // Run selected benchmarks on the full accumulated set
         if args.micro_streaming {
-            let (time, tuples) = run_micro_benchmark(&mut streaming_micro, &batch, None);
+            let (time, tuples) = run_micro_benchmark(&mut streaming_micro, &integral, None);
             results.push(BenchmarkResult::new(
                 "micro-streaming",
-                batch_size,
+                integral.len(),
                 integral.len(),
                 time,
                 tuples,
@@ -183,11 +188,14 @@ fn run_benchmarks(
         }
 
         if args.micro_magic {
-            let (time, tuples) =
-                run_micro_benchmark(&mut streaming_micro_magic, &batch, Some(Strategy::BottomUp));
+            let (time, tuples) = run_micro_benchmark(
+                &mut streaming_micro_magic,
+                &integral,
+                Some(Strategy::BottomUp),
+            );
             results.push(BenchmarkResult::new(
                 "micro-magic",
-                batch_size,
+                integral.len(),
                 integral.len(),
                 time,
                 tuples,
@@ -197,12 +205,12 @@ fn run_benchmarks(
         if args.micro_tabling {
             let (time, tuples) = run_micro_benchmark(
                 &mut streaming_micro_tabling,
-                &batch,
+                &integral,
                 Some(Strategy::TopDown),
             );
             results.push(BenchmarkResult::new(
                 "micro-tabling",
-                batch_size,
+                integral.len(),
                 integral.len(),
                 time,
                 tuples,
@@ -210,18 +218,6 @@ fn run_benchmarks(
         }
 
         // Run integral benchmarks
-        if args.micro_streaming {
-            let mut micro_runtime = MicroRuntime::new(program.clone());
-            let (time, tuples) = run_micro_benchmark(&mut micro_runtime, &integral, None);
-            results.push(BenchmarkResult::new(
-                "micro-integral",
-                integral.len(),
-                integral.len(),
-                time,
-                tuples,
-            ));
-        }
-
         if args.crepe {
             let (time, tuples) = run_crepe_benchmark(&integral);
             results.push(BenchmarkResult::new(
@@ -234,7 +230,7 @@ fn run_benchmarks(
         }
 
         if args.ascent {
-            let (time, tuples) = run_ascent_benchmark(&integral);
+            let (time, tuples) = run_ascent_benchmark(&mut ascent_runtime, &integral);
             results.push(BenchmarkResult::new(
                 "ascent",
                 integral.len(),
@@ -270,20 +266,20 @@ fn main() -> Result<(), Box<dyn Error>> {
     let res_path_string = format!("results_{}.json", timestamp);
     let results_path = Path::new(&res_path_string);
 
-    // Run benchmarks and save results
-    // println!("Running benchmarks on first {} edges...", args.edges);
-    // let results = run_benchmarks(&program, &limited_data, args.batch_size, &args)?;
-    // save_benchmark_results(&results, results_path)?;
-    // println!(
-    //     "Benchmarks completed and saved to {}",
-    //     results_path.display()
-    // );
+    //Run benchmarks and save results
+    println!("Running benchmarks on first {} edges...", args.edges);
+    let results = run_benchmarks(&program, &limited_data, args.batch_size, &args)?;
+    save_benchmark_results(&results, results_path)?;
+    println!(
+        "Benchmarks completed and saved to {}",
+        results_path.display()
+    );
 
     if !args.skip_visualization {
         // Load results and generate visualizations
         println!("Generating visualizations...");
-        let results = load_benchmark_results(Path::new("results_20250413_180035.json"))?;
-
+        //let results = load_benchmark_results(Path::new("results_20250415_154341.json"))?;
+        let results = load_benchmark_results(results_path)?;
         // Create visualization options based on selected benchmarks
         let vis_options = micro_datalog::visualization::VisualizationOptions {
             show_micro_streaming: args.micro_streaming,
@@ -291,9 +287,9 @@ fn main() -> Result<(), Box<dyn Error>> {
             show_micro_tabling: args.micro_tabling,
             show_crepe: args.crepe,
             show_ascent: args.ascent,
-            x_scale: Some((0.0, 509000.0)), // Set x-axis from 0 to total edges
-            y_scale_performance: Some((0.0, 0.45)),   // Set performance y-axis from 0 to 5000ms
-            y_scale_tuples: Some((0.0, 509000.0)),   // Set tuples y-axis from 0 to 100000 tuples
+            x_scale: Some((0.0, args.edges as f64)), // Set x-axis from 0 to total edges
+            y_scale_performance: Some((0.0, 150000.0)), // Set performance y-axis from 0 to 5000ms
+            y_scale_tuples: Some((0.0, 509000.0)), // Set tuples y-axis from 0 to 100000 tuples
         };
 
         visualize_results(&results, vis_dir, &vis_options)?;

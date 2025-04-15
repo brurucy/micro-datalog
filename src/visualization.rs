@@ -180,7 +180,7 @@ pub fn visualize_results(
     create_performance_plot(results, vis_dir, options, &timestamp)?;
 
     // Create tuples plot
-    create_tuples_plot(results, vis_dir, options, &timestamp)?;
+    //create_tuples_plot(results, vis_dir, options, &timestamp)?;
 
     Ok(())
 } 
