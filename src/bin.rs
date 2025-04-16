@@ -87,20 +87,19 @@ fn run_micro_benchmark(
     runtime: &mut MicroRuntime,
     edges: &[(usize, usize)],
     strategy: Option<Strategy>,
+    program: Program,
 ) -> (Duration, usize) {
     if let Some(s) = strategy {
-        let program = program! {
-            tc(?x, ?y) <- [e(?x, ?y)],
-            tc(?x, ?z) <- [e(?x, ?y), tc(?y, ?z)]
-        };
+       
         for &(from, to) in edges {
             runtime.insert("e", (from, to));
         }
         let query = build_query!(tc(_, _));
         let start = Instant::now();
-        let results: Vec<_> = runtime
+        let results: Vec<Vec<TypedValue>> = runtime
             .query_program(&query, program, &s)
             .into_iter()
+            .flatten()
             .collect();
         (start.elapsed(), results.len())
     } else {
@@ -174,15 +173,13 @@ fn run_benchmarks(
             .map(|line| parse_edge(line))
             .collect::<Result<Vec<_>, _>>()?;
 
-        integral.extend_from_slice(&batch);
-
-        // Run selected benchmarks on the full accumulated set
+        // Run selected benchmarks on just the new batch
         if args.micro_streaming {
-            let (time, tuples) = run_micro_benchmark(&mut streaming_micro, &integral, None);
+            let (time, tuples) = run_micro_benchmark(&mut streaming_micro, &batch, None, program.clone());
             results.push(BenchmarkResult::new(
                 "micro-streaming",
-                integral.len(),
-                integral.len(),
+                integral.len() + batch.len(),
+                integral.len() + batch.len(),
                 time,
                 tuples,
             ));
@@ -191,13 +188,14 @@ fn run_benchmarks(
         if args.micro_magic {
             let (time, tuples) = run_micro_benchmark(
                 &mut streaming_micro_magic,
-                &integral,
+                &batch,
                 Some(Strategy::BottomUp),
+                program.clone(),
             );
             results.push(BenchmarkResult::new(
                 "micro-magic",
-                integral.len(),
-                integral.len(),
+                integral.len() + batch.len(),
+                integral.len() + batch.len(),
                 time,
                 tuples,
             ));
@@ -206,13 +204,14 @@ fn run_benchmarks(
         if args.micro_tabling {
             let (time, tuples) = run_micro_benchmark(
                 &mut streaming_micro_tabling,
-                &integral,
+                &batch,
                 Some(Strategy::TopDown),
+                program.clone(),
             );
             results.push(BenchmarkResult::new(
                 "micro-tabling",
-                integral.len(),
-                integral.len(),
+                integral.len() + batch.len(),
+                integral.len() + batch.len(),
                 time,
                 tuples,
             ));
@@ -220,26 +219,29 @@ fn run_benchmarks(
 
         // Run integral benchmarks
         if args.crepe {
-            let (time, tuples) = run_crepe_benchmark(&integral);
+            let (time, tuples) = run_crepe_benchmark(&batch);
             results.push(BenchmarkResult::new(
                 "crepe",
-                integral.len(),
-                integral.len(),
+                integral.len() + batch.len(),
+                integral.len() + batch.len(),
                 time,
                 tuples,
             ));
         }
 
         if args.ascent {
-            let (time, tuples) = run_ascent_benchmark(&mut ascent_runtime, &integral);
+            let (time, tuples) = run_ascent_benchmark(&mut ascent_runtime, &batch);
             results.push(BenchmarkResult::new(
                 "ascent",
-                integral.len(),
-                integral.len(),
+                integral.len() + batch.len(),
+                integral.len() + batch.len(),
                 time,
                 tuples,
             ));
         }
+
+        // Add the new batch to the integral for the next iteration
+        integral.extend_from_slice(&batch);
 
         // Print progress
         println!("Processed {} edges", integral.len());
