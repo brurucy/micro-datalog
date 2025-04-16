@@ -110,7 +110,7 @@ fn run_micro_benchmark(
         let start = Instant::now();
         runtime.poll();
         let execution_time = start.elapsed();
-        let results: Vec<_> = runtime.query(&query).into_iter().collect();
+        let results: Vec<Vec<TypedValue>> = runtime.query(&query).into_iter().flatten().collect();
         (execution_time, results.len())
     }
 }
