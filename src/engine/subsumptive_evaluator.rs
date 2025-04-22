@@ -1,5 +1,6 @@
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
+use std::time::{Duration, Instant};
 
 use crate::engine::storage::RelationStorage;
 use crate::helpers::helpers::is_derived_predicate;
@@ -25,7 +26,7 @@ impl<'a> SubsumptiveEvaluator {
         }
     }
 
-    pub fn evaluate_query<'b>(&mut self, query: &'b Query) -> HashSet<AnonymousGroundAtom> {
+    pub fn evaluate_query<'b>(&mut self, query: &'b Query) -> (Vec<Vec<TypedValue>>, Duration) {
         let mut table = SubsumptiveTable::new();
         let mut seen_queries = HashSet::new();
 
@@ -50,18 +51,19 @@ impl<'a> SubsumptiveEvaluator {
                 .collect(),
             sign: true,
         };
-
+        let start = Instant::now();
         // Evaluate the query using subsumptive tabling
-        let results: HashSet<Vec<TypedValue>> = self.evaluate_subquery(
+        let results: Vec<Vec<TypedValue>> = self.evaluate_subquery(
             &atom,
             &pattern,
             &mut table,
             &mut seen_queries,
             0, // Start with depth 0
         );
+        let evaluation_time = start.elapsed();
 
         // Return the results as an iterator
-        return results;
+        return (results, evaluation_time);
     }
 
     pub fn evaluate_subquery(
@@ -71,8 +73,7 @@ impl<'a> SubsumptiveEvaluator {
         table: &mut SubsumptiveTable,
         seen_queries: &mut HashSet<(String, Vec<Option<TypedValue>>)>,
         depth: usize,
-    ) -> HashSet<AnonymousGroundAtom> {
-
+    ) -> Vec<Vec<TypedValue>> {
         // Check if there are already cached results from a more general (subsuming) query
         if let Some(cached_results) = table.find_subsuming(&atom.symbol, pattern) {
             return cached_results.iter().cloned().collect();
@@ -83,15 +84,12 @@ impl<'a> SubsumptiveEvaluator {
 
         // Prevent infinite recursion by tracking seen queries
         if seen_queries.contains(&query_key) {
-        
-
-            return all_results;
+            return all_results.into_iter().collect();
         }
         seen_queries.insert(query_key.clone());
 
         // First, process base facts (facts in storage)
         if let Some(facts) = self.unprocessed_insertions.inner.get(&atom.symbol) {
-        
             let matching_facts: HashSet<_> = facts
                 .iter()
                 .filter(|fact| {
@@ -104,7 +102,7 @@ impl<'a> SubsumptiveEvaluator {
                 })
                 .map(|arc_fact| (**arc_fact).clone())
                 .collect();
-         
+
             all_results.extend(matching_facts);
         }
 
@@ -143,7 +141,7 @@ impl<'a> SubsumptiveEvaluator {
             );
         }
 
-        all_results
+        all_results.into_iter().collect()
     }
 
     fn evaluate_rule_subsumptive(
@@ -168,7 +166,6 @@ impl<'a> SubsumptiveEvaluator {
                 bindings.insert(var.clone(), val.clone());
             }
         }
-
 
         // Evaluate each body atom in sequence
         let result = self.evaluate_body(

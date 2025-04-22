@@ -8,8 +8,6 @@ use itertools::*;
 use micro_datalog::benchmark::BenchmarkResult;
 use micro_datalog::engine::datalog::{MicroRuntime, Strategy};
 use micro_datalog::visualization::visualize_results;
-use plotters::prelude::*;
-use serde::{Deserialize, Serialize};
 use std::error::Error;
 use std::fs::File;
 use std::io::{BufReader, BufWriter};
@@ -74,7 +72,7 @@ ascent! {
 }
 
 fn parse_edge(line: &str) -> Result<(usize, usize), Box<dyn std::error::Error>> {
-    let parts: Vec<_> = line.split('\t').collect();
+    let parts: Vec<_> = line.split(' ').collect();
     if parts.len() != 2 {
         return Err("Invalid edge format".into());
     }
@@ -90,18 +88,12 @@ fn run_micro_benchmark(
     program: Program,
 ) -> (Duration, usize) {
     if let Some(s) = strategy {
-       
         for &(from, to) in edges {
             runtime.insert("e", (from, to));
         }
         let query = build_query!(tc(_, _));
-        let start = Instant::now();
-        let results: Vec<Vec<TypedValue>> = runtime
-            .query_program(&query, program, &s)
-            .into_iter()
-            .flatten()
-            .collect();
-        (start.elapsed(), results.len())
+        let (results, evaluation_time): (Vec<Vec<TypedValue>>, Duration) = runtime.query_program(&query, program, &s);
+        (evaluation_time, results.len())
     } else {
         for &(from, to) in edges {
             runtime.insert("e", (from, to));
@@ -137,7 +129,13 @@ fn run_ascent_benchmark(
     }
 
     runtime.run();
-    (start.elapsed(), runtime.tc.len())
+    // Query only tuples starting with 59630
+    let results: Vec<_> = runtime
+        .tc
+        .iter()
+        //.filter(|&(from, _)| *from == 59630)
+        .collect();
+    (start.elapsed(), results.len())
 }
 
 fn save_benchmark_results(results: &[BenchmarkResult], path: &Path) -> Result<(), Box<dyn Error>> {
@@ -175,7 +173,8 @@ fn run_benchmarks(
 
         // Run selected benchmarks on just the new batch
         if args.micro_streaming {
-            let (time, tuples) = run_micro_benchmark(&mut streaming_micro, &batch, None, program.clone());
+            let (time, tuples) =
+                run_micro_benchmark(&mut streaming_micro, &batch, None, program.clone());
             results.push(BenchmarkResult::new(
                 "micro-streaming",
                 integral.len() + batch.len(),
@@ -258,7 +257,7 @@ fn main() -> Result<(), Box<dyn Error>> {
         tc(?x, ?z) <- [e(?x, ?y), tc(?y, ?z)]
     };
 
-    let data = include_str!("../data/soc-Epinions1.txt");
+    let data = include_str!("../data/pegasus_edges.txt");
     let vis_dir = Path::new("visualizations");
 
     // Take only the specified number of edges
@@ -281,7 +280,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     if !args.skip_visualization {
         // Load results and generate visualizations
         println!("Generating visualizations...");
-        //let results = load_benchmark_results(Path::new("results_20250415_154341.json"))?;
+        //let results = load_benchmark_results(Path::new("results_20250418_233525.json"))?;
         let results = load_benchmark_results(results_path)?;
         // Create visualization options based on selected benchmarks
         let vis_options = micro_datalog::visualization::VisualizationOptions {
@@ -291,8 +290,8 @@ fn main() -> Result<(), Box<dyn Error>> {
             show_crepe: args.crepe,
             show_ascent: args.ascent,
             x_scale: Some((0.0, args.edges as f64)), // Set x-axis from 0 to total edges
-            y_scale_performance: Some((0.0, 150000.0)), // Set performance y-axis from 0 to 5000ms
-            y_scale_tuples: Some((0.0, 509000.0)), // Set tuples y-axis from 0 to 100000 tuples
+            y_scale_performance: Some((0.0, 700.0)), // Set performance y-axis from 0 to 5000ms
+            y_scale_tuples: Some((0.0, 509000.0)),   // Set tuples y-axis from 0 to 100000 tuples
         };
 
         visualize_results(&results, vis_dir, &vis_options)?;

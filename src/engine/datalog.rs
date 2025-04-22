@@ -1,15 +1,11 @@
-use std::collections::{HashMap, HashSet};
-use std::sync::Arc;
+use std::time::Duration;
 
 use crate::engine::storage::RelationStorage;
-use crate::engine::subsumptive_table::SubsumptiveTable;
 use crate::evaluation::query::pattern_match;
 use crate::evaluation::semi_naive::semi_naive_evaluation;
 use crate::helpers::helpers::split_program;
 use crate::program_transformations::dependency_graph::sort_program;
-use crate::program_transformations::magic_sets::{
-    apply_magic_transformation, create_magic_seed_fact,
-};
+
 use datalog_syntax::*;
 use indexmap::IndexSet;
 
@@ -95,7 +91,7 @@ impl MicroRuntime {
         query: &Query,
         program: Program,
         strategy: &Strategy,
-    ) -> Result<impl Iterator<Item = AnonymousGroundAtom> + '_, String> {
+    ) -> (Vec<Vec<TypedValue>>, Duration) {
         match strategy {
             Strategy::BottomUp => {
                 let mut evaluator = MagicEvaluator::new(
@@ -103,9 +99,10 @@ impl MicroRuntime {
                     self.unprocessed_insertions.clone(),
                     program
                 );
-               let result = evaluator.evaluate_query(query);
-               Ok(result.into_iter())
+               let (result, evaluation_duration) = evaluator.evaluate_query(query);
+               (result, evaluation_duration)
             }
+        
             Strategy::TopDown => {
                 let mut evaluator = SubsumptiveEvaluator::new(
                     self.processed.clone(),
@@ -113,8 +110,8 @@ impl MicroRuntime {
                     program,
                 );
 
-              let res = evaluator.evaluate_query(query);
-              Ok(res.into_iter())
+              let (result, evaluation_duration) = evaluator.evaluate_query(query);
+              (result, evaluation_duration)
             }
         }
     }
@@ -166,6 +163,21 @@ macro_rules! convert_fact {
     ($query:expr) => {{
         $query
             .unwrap()
+            .map(|aga| {
+                (
+                    &*Into::<String>::into(aga[0].clone()).leak(),
+                    &*Into::<String>::into(aga[1].clone()).leak(),
+                )
+            })
+            .collect()
+    }};
+}
+
+#[macro_export]
+macro_rules! convert_fact_vec {
+    ($query:expr) => {{
+        $query
+            .into_iter()
             .map(|aga| {
                 (
                     &*Into::<String>::into(aga[0].clone()).leak(),

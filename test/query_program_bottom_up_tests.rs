@@ -4,7 +4,7 @@ mod tests {
 
     use datalog_rule_macro::program;
     use datalog_syntax::*;
-    use micro_datalog::{convert_fact, engine::datalog::MicroRuntime};
+    use micro_datalog::{convert_fact_vec, engine::datalog::MicroRuntime};
 
     #[test]
     fn test_query_program_same_generation() {
@@ -36,11 +36,11 @@ mod tests {
 
         // Query for nodes in same generation as b1 (should find b2, b3, b4)
         let query = build_query!(sg("b1", _));
-        let results: HashSet<_> = convert_fact!(runtime.query_program(
+        let (results, evaluation_time) = runtime.query_program(
             &query,
             program,
             &micro_datalog::engine::datalog::Strategy::BottomUp
-        ));
+        );
 
         // b1 should be in same generation as b2, b3, and b4
         let expected: HashSet<_> = vec![
@@ -52,7 +52,7 @@ mod tests {
         .into_iter()
         .collect();
 
-        assert_eq!(expected, results);
+        assert_eq!(expected, convert_fact_vec!(results));
     }
 
     #[test]
@@ -70,18 +70,18 @@ mod tests {
 
         // Query for ancestors of john
         let query = build_query!(ancestor("john", _));
-        let results: HashSet<_> = convert_fact!(runtime.query_program(
+        let (results, evaluation_time) = runtime.query_program(
             &query,
             program,
             &micro_datalog::engine::datalog::Strategy::BottomUp
-        ));
+        );
 
         // Expected results - john is ancestor of both bob and mary
         let expected: HashSet<_> = vec![("john", "bob"), ("john", "mary")]
             .into_iter()
             .collect();
 
-        assert_eq!(expected, results);
+        assert_eq!(expected, convert_fact_vec!(results));
     }
 
     #[test]
@@ -99,17 +99,17 @@ mod tests {
 
         // Query for ancestors of john
         let query = build_query!(ancestor(_, _));
-        let results: HashSet<_> = convert_fact!(runtime.query_program(
+        let (results, evaluation_time) = runtime.query_program(
             &query,
             program,
             &micro_datalog::engine::datalog::Strategy::BottomUp
-        ));
+        );
 
         // Expected results - john is ancestor of both bob and mary
         let expected: HashSet<_> = vec![("john", "bob"), ("bob", "mary"), ("john", "mary")]
             .into_iter()
             .collect();
 
-        assert_eq!(expected, results);
+        assert_eq!(expected, convert_fact_vec!(results));
     }
 }

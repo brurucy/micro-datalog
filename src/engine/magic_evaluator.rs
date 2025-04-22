@@ -1,4 +1,5 @@
 use std::collections::HashSet;
+use std::time::{Duration, Instant};
 
 use crate::engine::storage::RelationStorage;
 use crate::evaluation::query::pattern_match;
@@ -12,7 +13,7 @@ use super::datalog::MicroRuntime;
 pub struct MagicEvaluator {
     processed: RelationStorage,
     unprocessed_insertions: RelationStorage,
-    program: Program
+    program: Program,
 }
 
 impl<'a> MagicEvaluator {
@@ -20,14 +21,11 @@ impl<'a> MagicEvaluator {
         Self {
             processed,
             unprocessed_insertions: unprocessed,
-            program: program
+            program: program,
         }
     }
 
-    pub fn evaluate_query<'b>(
-        &mut self,
-        query: &Query,
-    ) -> HashSet<AnonymousGroundAtom> {
+    pub fn evaluate_query<'b>(&mut self, query: &Query) -> (Vec<Vec<TypedValue>>, Duration) {
         // Create adorned query symbol by combining original symbol with binding pattern
         let pattern_string: String = query
             .matchers
@@ -53,7 +51,8 @@ impl<'a> MagicEvaluator {
         let mut runtime = MicroRuntime::new(magic_program);
 
         // Pre-compute base predicates to avoid repeated checks
-        let base_predicates: HashSet<_> = self.program
+        let base_predicates: HashSet<_> = self
+            .program
             .inner
             .iter()
             .map(|rule| &rule.head.symbol)
@@ -70,38 +69,52 @@ impl<'a> MagicEvaluator {
 
         // Initialize storage for all relations
         for rel_name in all_relations {
-            runtime.unprocessed_insertions.inner.entry(rel_name).or_default();
+            runtime
+                .unprocessed_insertions
+                .inner
+                .entry(rel_name)
+                .or_default();
         }
 
         // Transfer base facts in a single pass
         for (rel_name, facts) in &self.processed.inner {
             if !base_predicates.contains(rel_name) && !facts.is_empty() {
-                runtime.processed.insert_registered(rel_name, facts.iter().cloned());
+                runtime
+                    .processed
+                    .insert_registered(rel_name, facts.iter().cloned());
             }
         }
 
         // Transfer unprocessed facts in a single pass
         for (rel_name, facts) in &self.unprocessed_insertions.inner {
             if !base_predicates.contains(rel_name) && !facts.is_empty() {
-                runtime.unprocessed_insertions.insert_registered(rel_name, facts.iter().cloned());
+                runtime
+                    .unprocessed_insertions
+                    .insert_registered(rel_name, facts.iter().cloned());
             }
         }
 
         // Add magic seed fact
         let (magic_pred, seed_fact) = create_magic_seed_fact(query);
-        runtime.unprocessed_insertions.inner.entry(magic_pred.clone()).or_default();
+        runtime
+            .unprocessed_insertions
+            .inner
+            .entry(magic_pred.clone())
+            .or_default();
         runtime.insert(&magic_pred, seed_fact);
 
+        let start = Instant::now();
         // Evaluate the program
         runtime.poll();
 
-        // Collect results with pattern matching
-        runtime
+        let evaluation_time = start.elapsed();
+        let results = runtime
             .processed
             .get_relation(&query_temp.symbol)
             .iter()
             .filter(|fact| pattern_match(&query_temp, fact))
             .map(|fact| (**fact).clone())
-            .collect()
+            .collect();
+        (results, evaluation_time)
     }
 }

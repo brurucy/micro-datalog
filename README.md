@@ -108,13 +108,13 @@ mod tests {
 ```
 
 # Run all benchmarks
-cargo run -- --micro-streaming --micro-magic --micro-tabling --crepe --ascent
+cargo run --release -- --micro-streaming --micro-magic --micro-tabling --crepe --ascent
 
 # Run only micro magic and tabling
-cargo run -- --micro-magic --micro-tabling
+cargo run --release -- --micro-magic --micro-tabling
 
 # Run with custom edge count and batch size
-cargo run -- --edges 10000 --batch-size 500 --micro-magic --micro-tabling
+cargo run --release -- --edges 10000 --batch-size 500 --micro-magic --micro-tabling
 
 # Run benchmarks without visualization
-cargo run -- --micro-magic --micro-tabling --skip-visualization
+cargo run --release -- --micro-magic --micro-tabling --skip-visualization
