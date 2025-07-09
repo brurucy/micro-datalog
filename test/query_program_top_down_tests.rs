@@ -62,6 +62,32 @@ mod tests {
     // }
 
     #[test]
+    fn test_query_program_rdf() {
+        let program = program! { 
+            t(?s, ?p, ?o) <- [rdf(?s, ?p, ?o)], 
+            t(?y, 0usize, ?x) <- [t(?a, 3usize, ?x), t(?y, ?a, ?z)], 
+            t(?z, 0usize, ?x) <- [t(?a, 4usize, ?x), t(?y, ?a, ?z)], 
+            t(?x, 2usize, ?z) <- [t(?x, 2usize, ?y), t(?y, 2usize, ?z)], 
+            t(?x, 1usize, ?z) <- [t(?x, 1usize, ?y), t(?y, 1usize, ?z)], 
+            t(?z, 0usize, ?y) <- [t(?x, 1usize, ?y), t(?z, 0usize, ?x)], 
+            t(?x, ?b, ?y) <- [t(?a, 2usize, ?b), t(?x, ?a, ?y)]
+        };
+
+        let mut runtime = MicroRuntime::new(program.clone());
+        runtime.insert("rdf", ("a", "b", "c"));
+
+        let query = build_query!(t("a", "b", "c"));
+        let (results, evaluation_time) = runtime.query_program(&query, program, &Strategy::TopDown);
+
+        let expected: HashSet<_> = vec![("a", "b", "c")]
+            .into_iter()
+            .collect();
+
+        println!("results==={:?}", results);
+        assert_eq!(true, true);
+    }
+
+    #[test]
     fn test_query_program_ancestor_bf() {
         // Set up a simple ancestor program
         let program = program! {

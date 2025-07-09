@@ -27,6 +27,8 @@ impl<'a> SubsumptiveEvaluator {
     }
 
     pub fn evaluate_query<'b>(&self, query: &'b Query) -> (Vec<Vec<TypedValue>>, Duration) {
+        println!("Evaluating query: {:?}, {:?}", query.symbol, query.matchers);
+        println!("Program: {:?}", self.program.inner);
         let mut table = SubsumptiveTable::new();
         let mut seen_queries = HashSet::new();
 
@@ -74,6 +76,7 @@ impl<'a> SubsumptiveEvaluator {
         seen_queries: &mut HashSet<(String, Vec<Option<TypedValue>>)>,
         depth: usize,
     ) -> Vec<Vec<TypedValue>> {
+        println!("Evaluating subquery: {:?}, {:?}", atom.symbol, pattern);
         let mut all_results = HashSet::new();
         let query_key = (atom.symbol.clone(), pattern.to_vec());
 
@@ -153,6 +156,7 @@ impl<'a> SubsumptiveEvaluator {
         results: &mut HashSet<AnonymousGroundAtom>,
         depth: usize,
     ) -> () {
+        println!("Evaluating rule: {:?}, {:?}", rule.head.symbol, head_pattern);
         let indent = "  ".repeat(depth);
 
         // Create a variable binding map to track bound variables
@@ -193,6 +197,7 @@ impl<'a> SubsumptiveEvaluator {
         results: &mut HashSet<AnonymousGroundAtom>,
         depth: usize,
     ) -> () {
+        println!("Evaluating body: {:?}, {:?}", body, head);
         let indent = "  ".repeat(depth);
 
         // Base case: all body atoms have been processed

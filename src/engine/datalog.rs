@@ -36,6 +36,7 @@ pub enum Strategy {
 
 impl MicroRuntime {
     pub fn insert(&mut self, relation: &str, ground_atom: impl Into<Fact>) -> bool {
+        println!("inserting");
         self.unprocessed_insertions
             .insert(relation, ground_atom.into().0)
     }
@@ -92,6 +93,8 @@ impl MicroRuntime {
         program: Program,
         strategy: &Strategy,
     ) -> (Vec<Vec<TypedValue>>, Duration) {
+        println!("Query: {:?}, {:?}", query.symbol, query.matchers);
+        println!("Program: {:?}", program.inner);
         match strategy {
             Strategy::BottomUp => {
                 let evaluator = MagicEvaluator::new(
@@ -117,6 +120,7 @@ impl MicroRuntime {
     }
 
     pub fn new(program: Program) -> Self {
+        println!("New runtime");
         let mut processed: RelationStorage = Default::default();
         let mut unprocessed_insertions: RelationStorage = Default::default();
 

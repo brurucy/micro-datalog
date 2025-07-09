@@ -39,7 +39,7 @@ impl<'a> MagicEvaluator {
 
         // Apply magic transformation once
         let magic_program = apply_magic_transformation(&self.program, query);
-
+        println!("Magic program: {:?}", magic_program.inner);
         // Create runtime with the transformed program
         let mut runtime = MicroRuntime::new(magic_program.clone());
 
