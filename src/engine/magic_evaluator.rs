@@ -3,6 +3,7 @@ use std::time::{Duration, Instant};
 
 use crate::engine::storage::RelationStorage;
 use crate::evaluation::query::pattern_match;
+use crate::helpers::helpers::get_queries_with_all_binding_patterns;
 use crate::program_transformations::magic_sets::{
     apply_magic_transformation, create_magic_seed_fact,
 };
@@ -25,7 +26,7 @@ impl<'a> MagicEvaluator {
         }
     }
 
-    pub fn evaluate_query<'b>(&mut self, query: &Query) -> (Vec<Vec<TypedValue>>, Duration) {
+    pub fn evaluate_query<'b>(&self, query: &Query) -> (Vec<Vec<TypedValue>>, Duration) {
         // Create adorned query symbol by combining original symbol with binding pattern
         let pattern_string: String = query
             .matchers
@@ -36,19 +37,11 @@ impl<'a> MagicEvaluator {
             })
             .collect();
 
-        let adorned_symbol = format!("{}_{}", query.symbol, pattern_string);
-
-        // Create temporary query with adorned symbol
-        let query_temp = Query {
-            matchers: query.matchers.clone(),
-            symbol: &adorned_symbol,
-        };
-
         // Apply magic transformation once
         let magic_program = apply_magic_transformation(&self.program, query);
 
         // Create runtime with the transformed program
-        let mut runtime = MicroRuntime::new(magic_program);
+        let mut runtime = MicroRuntime::new(magic_program.clone());
 
         // Pre-compute base predicates to avoid repeated checks
         let base_predicates: HashSet<_> = self
@@ -96,6 +89,7 @@ impl<'a> MagicEvaluator {
 
         // Add magic seed fact
         let (magic_pred, seed_fact) = create_magic_seed_fact(query);
+
         runtime
             .unprocessed_insertions
             .inner
@@ -103,18 +97,31 @@ impl<'a> MagicEvaluator {
             .or_default();
         runtime.insert(&magic_pred, seed_fact);
 
+
         let start = Instant::now();
         // Evaluate the program
         runtime.poll();
 
         let evaluation_time = start.elapsed();
-        let results = runtime
+
+        let mut results = HashSet::new();
+        let queries = get_queries_with_all_binding_patterns(query, &magic_program);
+        for query_i in queries {
+            let results_i: Vec<Vec<TypedValue>> = runtime
             .processed
-            .get_relation(&query_temp.symbol)
+            .get_relation(&query_i.symbol)
             .iter()
-            .filter(|fact| pattern_match(&query_temp, fact))
+            .filter(|fact| pattern_match(&query_i, fact))
             .map(|fact| (**fact).clone())
             .collect();
-        (results, evaluation_time)
+
+            results.extend(results_i);
+        }
+        
+        (results.into_iter().collect(), evaluation_time)
     }
+
+    
+    
+ 
 }

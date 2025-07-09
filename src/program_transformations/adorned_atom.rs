@@ -42,6 +42,39 @@ impl AdornedAtom {
             adornment,
         }
     }
+
+    pub fn from_modified_atom(atom: Atom) -> Self {
+        let parts: Vec<&str> = atom.symbol.split('_').collect();
+        
+        if parts.len() <= 1 {
+            // If there's no underscore or only one part, return the original atom
+            // with all terms marked as free
+            let adornment = vec![Adornment::Free; atom.terms.len()];
+            return AdornedAtom {
+                atom: atom.clone(),
+                adornment,
+            };
+        }
+        
+        // Split into: all parts except last, and the last part
+        let (prefix_parts, last_part) = parts.split_at(parts.len() - 1);
+        let prefix = prefix_parts.join("_");
+        let suffix = last_part[0];
+        
+        // Create adornment based on the suffix characters
+        let adornment: Vec<Adornment> = suffix.chars()
+            .map(|c| match c {
+                'b' => Adornment::Bound,
+                'f' => Adornment::Free,
+                _ => Adornment::Free, // Default to free for any other characters
+            })
+            .collect();
+        
+        AdornedAtom {
+            atom: Atom { terms: atom.terms, symbol: prefix, sign: atom.sign },
+            adornment,
+        }
+    }
 }
 
 #[cfg(test)]

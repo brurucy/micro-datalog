@@ -40,6 +40,7 @@ impl SubsumptiveTable {
         }
         None
     }
+
     pub fn print_contents(&self) {
         println!("\nTable Contents:");
         for (pred, entries) in &self.tables {

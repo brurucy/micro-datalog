@@ -6,8 +6,91 @@ mod tests {
     use datalog_syntax::*;
     use micro_datalog::program_transformations::{adorned_atom::AdornedAtom, magic_sets::*};
 
+    // #[test]
+    // fn test_magic_transformation_sg() {
+    //     let program = program! {
+    //         sg(?x, ?y) <- [flat(?x, ?y)],
+    //         sg(?x, ?y) <- [up(?x, ?z1), down(?z1, ?y)],
+    //         sg(?x, ?y) <- [up(?x, ?z1), sg(?z1, ?z2), down(?z2, ?y)]
+    //     };
+
+    //     let query = build_query!(sg("john", _));
+
+    //     let expected_transformed_program = program! {
+    //         magic_sg_bf(?z1) <- [magic_sg_bf(?x), up(?x, ?z1)],
+    //     };
+
+    //     let transformed_program = apply_magic_transformation(&program, &query);
+    //     assert_eq!(expected_transformed_program, transformed_program);
+    // }
+
     #[test]
-    fn test_magic_transformation_ancestor() {
+    fn test_magic_transformation_tc_bbb() {
+        let program = program! {
+            tc(?x, ?y, ?z) <- [e(?x, ?y), e(?y, ?z), e(?z, ?w)],
+            tc(?x, ?y, ?w) <- [tc(?x, ?y, ?z), tc(?y, ?z, ?w)],
+        };
+
+        let query = build_query!(tc("john", "john", "mark"));
+
+        let expected_transformed_program = program! {
+
+        tc_bbb(?x, ?y, ?z) <- [magic_tc_bbb(?x, ?y, ?z), e(?x, ?y), e(?y, ?z), e(?z, ?w)],
+        tc_bbb(?x, ?y, ?w) <- [magic_tc_bbb(?x, ?y, ?w), tc_bbf(?x, ?y, ?z), tc_bfb(?y, ?z, ?w)],
+
+        tc_bbf(?x, ?y, ?z) <- [magic_tc_bbf(?x, ?y), e(?x, ?y), e(?y, ?z), e(?z, ?w)],
+        tc_bbf(?x, ?y, ?w) <- [magic_tc_bbf(?x, ?y), tc_bbf(?x, ?y, ?z), tc_bff(?y, ?z, ?w)],
+
+        tc_bfb(?x, ?y, ?z) <- [magic_tc_bfb(?x, ?z), e(?x, ?y), e(?y, ?z), e(?z, ?w)],
+        tc_bfb(?x, ?y, ?w) <- [magic_tc_bfb(?x, ?w), tc_bff(?x, ?y, ?z), tc_ffb(?y, ?z, ?w)],
+
+        tc_bff(?x, ?y, ?z) <- [magic_tc_bff(?x), e(?x, ?y), e(?y, ?z), e(?z, ?w)],
+        tc_bff(?x, ?y, ?w) <- [magic_tc_bff(?x), tc_bff(?x, ?y, ?z), tc_fff(?y, ?z, ?w)],
+
+        tc_ffb(?x, ?y, ?z) <- [magic_tc_ffb(?z), e(?x, ?y), e(?y, ?z), e(?z, ?w)],
+        tc_ffb(?x, ?y, ?w) <- [magic_tc_ffb(?w), tc_fff(?x, ?y, ?z), tc_ffb(?y, ?z, ?w)],
+
+        tc_fff(?x, ?y, ?z) <- [e(?x, ?y), e(?y, ?z), e(?z, ?w)],
+        tc_fff(?x, ?y, ?w) <- [tc_fff(?x, ?y, ?z), tc_fff(?y, ?z, ?w)],
+
+        magic_tc_bbf(?x, ?y) <- [magic_tc_bbb(?x, ?y, ?w)],
+        magic_tc_bfb(?y, ?w) <- [magic_tc_bbb(?x, ?y, ?w), tc_bbf(?x, ?y, ?z)],
+
+        magic_tc_bff(?y) <- [magic_tc_bbf(?x, ?y), tc_bbf(?x, ?y, ?z)],
+
+        magic_tc_bff(?x) <- [magic_tc_bfb(?x, ?w)],
+        magic_tc_ffb(?w) <- [magic_tc_bfb(?x, ?w), tc_bff(?x, ?y, ?z)],
+
+        magic_tc_ffb(?w)  <- [magic_tc_ffb(?w), tc_fff(?x, ?y, ?z)],
+        };
+
+        let transformed_program = apply_magic_transformation(&program, &query);
+        println!("transformed_program===");
+        for rule in &transformed_program.inner {
+            println!("transformed_rule==={:?}", rule);
+        }
+        assert_eq!(expected_transformed_program, transformed_program);
+    }
+
+    #[test]
+    fn test_magic_transformation_tc_bf() {
+        let program = program! {
+            tc(?x, ?y) <- [e(?x, ?y)],
+            tc(?x, ?z) <- [tc(?x, ?y), tc(?y, ?z)]
+        };
+
+        let query = build_query!(tc("john", _));
+
+        let expected_transformed_program = program! {
+            magic_sg_bf(?z1) <- [magic_sg_bf(?x), up(?x, ?z1)],
+        };
+
+        let transformed_program = apply_magic_transformation(&program, &query);
+        assert_eq!(expected_transformed_program, transformed_program);
+    }
+
+    #[test]
+    fn test_magic_transformation_ancestor_bf() {
         let program = program! {
             ancestor(?x, ?y) <- [parent(?x, ?y)],
             ancestor(?x, ?z) <- [parent(?x, ?y), ancestor(?y, ?z)]
@@ -31,6 +114,78 @@ mod tests {
         assert_eq!(expected_transformed_program, transformed_program);
     }
 
+    #[test]
+    fn test_magic_transformation_ancestor_bb() {
+        let program = program! {
+            ancestor(?x, ?y) <- [parent(?x, ?y)],
+            ancestor(?x, ?z) <- [parent(?x, ?y), ancestor(?y, ?z)]
+        };
+
+        let query = build_query!(ancestor("john", "mary"));
+
+        // The expected magic-transformed program
+        let expected_transformed_program = program! {
+            ancestor_bb(?x, ?y) <- [magic_ancestor_bb(?x, ?y), parent(?x, ?y)],
+            ancestor_bb(?x, ?z) <- [magic_ancestor_bb(?x, ?z), parent(?x, ?y), ancestor_bb(?y, ?z)],
+            magic_ancestor_bb(?y, ?z) <- [magic_ancestor_bb(?x, ?z), parent(?x, ?y)]
+        };
+
+        // Apply the magic transformation to the program
+        let transformed_program = apply_magic_transformation(&program, &query);
+        assert_eq!(expected_transformed_program, transformed_program);
+    }
+
+    
+    #[test]
+    fn test_magic_transformation_ancestor_fb() {
+        let program = program! {
+            ancestor(?x, ?y) <- [parent(?x, ?y)],
+            ancestor(?x, ?z) <- [parent(?x, ?y), ancestor(?y, ?z)]
+        };
+
+        let query = build_query!(ancestor(_, "john"));
+
+        // The expected magic-transformed program
+        let expected_transformed_program = program! {
+            ancestor_fb(?x, ?y) <- [magic_ancestor_fb(?y), parent(?x, ?y)],
+            ancestor_fb(?x, ?z) <- [magic_ancestor_fb(?z), parent(?x, ?y), ancestor_bb(?y, ?z)],
+
+
+            ancestor_bb(?x, ?y) <- [magic_ancestor_bb(?x, ?y), parent(?x, ?y)],
+            ancestor_bb(?x, ?z) <- [magic_ancestor_bb(?x, ?z), parent(?x, ?y), ancestor_bb(?y, ?z)],
+
+             // Magic rules
+            magic_ancestor_bb(?y, ?z) <- [magic_ancestor_fb(?z), parent(?x, ?y)],
+            magic_ancestor_bb(?y, ?z) <- [magic_ancestor_bb(?x, ?z), parent(?x, ?y)],
+        };
+
+        // Apply the magic transformation to the program
+        let transformed_program = apply_magic_transformation(&program, &query);
+        assert_eq!(expected_transformed_program, transformed_program);
+    }
+    
+
+    #[test]
+    fn test_magic_transformation_ancestor_ff() {
+        let program = program! {
+            ancestor(?x, ?y) <- [parent(?x, ?y)],
+            ancestor(?x, ?z) <- [parent(?x, ?y), ancestor(?y, ?z)]
+        };
+
+        let query = build_query!(ancestor(_, _));
+
+        let expected = program! {
+            ancestor_ff(?x, ?y) <- [parent(?x, ?y)],
+            ancestor_ff(?x, ?z) <- [parent(?x, ?y), ancestor_bf(?y, ?z)],
+            ancestor_bf(?x, ?y) <- [magic_ancestor_bf(?x), parent(?x, ?y)],
+            ancestor_bf(?x, ?z) <- [magic_ancestor_bf(?x), parent(?x, ?y), ancestor_bf(?y, ?z)],
+            magic_ancestor_bf(?y) <- [magic_ancestor_bf(?x), parent(?x, ?y)],
+            magic_ancestor_bf(?y) <- [parent(?x, ?y)],
+        };
+
+        let transformed = apply_magic_transformation(&program, &query);
+        assert_eq!(expected, transformed);
+    }
     #[test]
     fn test_modify_original_rule() {
         let rule = rule! { p(?x, ?y) <- [q(?x, ?z), p(?z, ?y)] };
@@ -68,23 +223,6 @@ mod tests {
         assert_eq!(modified.body.len(), 3);
     }
 
-    #[test]
-    fn test_tc_magic_transform() {
-        let program = program! {
-            ancestor(?x, ?y) <- [parent(?x, ?y)],
-            ancestor(?x, ?z) <- [parent(?x, ?y), ancestor(?y, ?z)]
-        };
-
-        let query = build_query!(ancestor(_, _));
-
-        let expected = program! {
-            ancestor_ff(?x, ?y) <- [magic_ancestor_ff(), parent(?x, ?y)],
-            ancestor_ff(?x, ?z) <- [magic_ancestor_ff(), parent(?x, ?y), ancestor_ff(?y, ?z)]
-        };
-
-        let transformed = apply_magic_transformation(&program, &query);
-        assert_eq!(transformed, expected);
-    }
 
     #[test]
     fn test_ancestor_magic_transform() {

@@ -1,3 +1,4 @@
+use datalog_syntax::TypedValue;
 use serde::{Serialize, Deserialize};
 use std::time::Duration;
 
@@ -8,16 +9,19 @@ pub struct BenchmarkResult {
     pub cumulative_edges: usize,
     pub execution_time_micros: u128,
     pub inferred_tuples: usize,
+    pub result_tuples: Vec<Vec<TypedValue>>,
 }
 
 impl BenchmarkResult {
-    pub fn new(strategy: &str, batch_size: usize, edges: usize, time: Duration, tuples: usize) -> Self {
+    pub fn new(strategy: &str, batch_size: usize, edges: usize, time: Duration, tuples: usize, result_tuples: Vec<Vec<TypedValue>>) -> Self {
         Self {
             strategy: strategy.to_string(),
             batch_size,
             cumulative_edges: edges,
             execution_time_micros: time.as_micros(),
             inferred_tuples: tuples,
+            result_tuples,
+       
         }
     }
 } 

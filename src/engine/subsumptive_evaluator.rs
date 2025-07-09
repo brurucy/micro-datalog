@@ -26,7 +26,7 @@ impl<'a> SubsumptiveEvaluator {
         }
     }
 
-    pub fn evaluate_query<'b>(&mut self, query: &'b Query) -> (Vec<Vec<TypedValue>>, Duration) {
+    pub fn evaluate_query<'b>(&self, query: &'b Query) -> (Vec<Vec<TypedValue>>, Duration) {
         let mut table = SubsumptiveTable::new();
         let mut seen_queries = HashSet::new();
 
@@ -67,26 +67,26 @@ impl<'a> SubsumptiveEvaluator {
     }
 
     pub fn evaluate_subquery(
-        &mut self,
+        &self,
         atom: &Atom,
         pattern: &[Option<TypedValue>],
         table: &mut SubsumptiveTable,
         seen_queries: &mut HashSet<(String, Vec<Option<TypedValue>>)>,
         depth: usize,
     ) -> Vec<Vec<TypedValue>> {
-        // Check if there are already cached results from a more general (subsuming) query
-        if let Some(cached_results) = table.find_subsuming(&atom.symbol, pattern) {
-            return cached_results.iter().cloned().collect();
-        }
-
         let mut all_results = HashSet::new();
         let query_key = (atom.symbol.clone(), pattern.to_vec());
 
         // Prevent infinite recursion by tracking seen queries
         if seen_queries.contains(&query_key) {
-            return all_results.into_iter().collect();
+            return Vec::new();
         }
+
         seen_queries.insert(query_key.clone());
+        // Check if there are already cached results from a more general (subsuming) query
+        if let Some(cached_results) = table.find_subsuming(&atom.symbol, pattern) {
+            return cached_results.iter().cloned().collect();
+        }
 
         // First, process base facts (facts in storage)
         if let Some(facts) = self.unprocessed_insertions.inner.get(&atom.symbol) {
@@ -145,7 +145,7 @@ impl<'a> SubsumptiveEvaluator {
     }
 
     fn evaluate_rule_subsumptive(
-        &mut self,
+        &self,
         rule: &Rule,
         head_pattern: &[Option<TypedValue>],
         table: &mut SubsumptiveTable,
@@ -183,7 +183,7 @@ impl<'a> SubsumptiveEvaluator {
     }
 
     fn evaluate_body(
-        &mut self,
+        &self,
         body: &[Atom],
         head: &Atom,
         pos: usize,
@@ -208,55 +208,32 @@ impl<'a> SubsumptiveEvaluator {
         // Create a subquery pattern based on current bindings
         let pattern = create_subquery_pattern(atom, bindings);
 
-        // For base predicates, directly match against facts
-        if !is_derived_predicate(&self.program, &atom.symbol) {
-            let base_results = self.match_base_predicate(atom, &pattern);
+        let mut subresults: Vec<Vec<TypedValue>> = Vec::new();
 
-            for base_result in base_results {
-                let mut new_bindings = bindings.clone();
-                update_bindings(
-                    &mut new_bindings,
-                    atom,
-                    &HashSet::from_iter(vec![base_result.clone()]),
-                );
-
-                self.evaluate_body(
-                    body,
-                    head,
-                    pos + 1,
-                    &mut new_bindings,
-                    table,
-                    seen_queries,
-                    results,
-                    depth + 1,
-                );
-            }
+        if is_derived_predicate(&self.program, &atom.symbol) {
+            subresults = self.evaluate_subquery(atom, &pattern, table, seen_queries, depth + 1);
         } else {
-            let atom_obj = Atom {
-                symbol: atom.symbol.clone(),
-                terms: atom.terms.clone(),
-                sign: atom.sign,
-            };
+            subresults = self
+                .match_base_predicate(atom, &pattern)
+                .into_iter()
+                .collect();
+        }
 
-            let subresults =
-                self.evaluate_subquery(&atom_obj, &pattern, table, seen_queries, depth + 1);
+        for subresult in subresults {
+            let mut new_bindings = bindings.clone();
+            let subresult_set = HashSet::from_iter(vec![subresult.clone()]);
+            update_bindings(&mut new_bindings, atom, &subresult_set);
 
-            for subresult in subresults {
-                let mut new_bindings = bindings.clone();
-                let subresult_set = HashSet::from_iter(vec![subresult.clone()]);
-                update_bindings(&mut new_bindings, atom, &subresult_set);
-
-                self.evaluate_body(
-                    body,
-                    head,
-                    pos + 1,
-                    &mut new_bindings,
-                    table,
-                    seen_queries,
-                    results,
-                    depth + 1,
-                );
-            }
+            self.evaluate_body(
+                body,
+                head,
+                pos + 1,
+                &mut new_bindings,
+                table,
+                seen_queries,
+                results,
+                depth + 1,
+            );
         }
     }
 

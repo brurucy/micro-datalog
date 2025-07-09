@@ -503,6 +503,7 @@ impl<'a> RuleEvaluator<'a> {
         &self,
         index_storage: &mut IndexStorage,
     ) -> impl Iterator<Item = AnonymousGroundAtom> + 'a {
+        //println!("rule==={:?}", self.rule);
         let stack = Stack::from(self.rule.clone());
 
         // There will always be at least two elements on the stack. Move or Select, and then Projection.
@@ -688,6 +689,7 @@ impl<'a> RuleEvaluator<'a> {
                 }
             }
         }
+        //println!("Rule: {:?} grounded_facts==={:?}", self.rule, grounded_facts.clone().into_iter().collect::<Vec<_>>());
 
         grounded_facts.into_iter()
     }

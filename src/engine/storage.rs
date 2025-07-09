@@ -1,6 +1,6 @@
 use crate::evaluation::spj_processor::RuleEvaluator;
 use ahash::{HashMap, HashMapExt};
-use datalog_syntax::{AnonymousGroundAtom, Program};
+use datalog_syntax::{AnonymousGroundAtom, Fact, Program, TypedValue};
 use indexmap::IndexSet;
 use std::sync::Arc;
 
@@ -17,6 +17,30 @@ impl RelationStorage {
     }
     pub fn get_relation_safe(&self, relation_symbol: &str) -> Option<&FactStorage> {
         return self.inner.get(relation_symbol);
+    }
+
+    /// Retrieves all edges from the graph stored in RelationStorage
+    pub fn get_all_edges(&self, node: String) -> Vec<(String, String)> {
+        let edges = &self.get_relation(&node);
+       
+        edges
+            .iter()
+            .map(|fact| {
+                    // Each fact should be a 2-element vector [src, dst]
+                let values = &**fact;
+                let src = match &values[0] {
+                    TypedValue::Int(x) => x.to_string(),
+                    TypedValue::Str(x) => x.clone(),
+                    TypedValue::Bool(x) => x.to_string(),
+                };
+                let dst = match &values[1] {
+                    TypedValue::Int(x) => x.to_string(),
+                    TypedValue::Str(x) => x.clone(),
+                    TypedValue::Bool(x) => x.to_string(),
+                };
+                (src, dst)
+            })
+            .collect()
     }
     pub fn drain_all_relations(
         &mut self,
@@ -104,6 +128,7 @@ impl RelationStorage {
     ) {
         let mut new_diff: HashMap<String, Vec<EphemeralValue>> = HashMap::new();
 
+        //println!("NONRECURSIVE EVALUATION START===");
         for (_idx, rule) in nonrecursive_program.inner.iter().enumerate() {
             let evaluator = RuleEvaluator::new(self, rule);
 
@@ -143,6 +168,7 @@ impl RelationStorage {
             .map(|rule| (&rule.head.symbol, RuleEvaluator::new(self, rule)))
             .collect();
 
+        //println!("RECURSIVE EVALUATION START===");
         let evaluation = evaluation_setup
             .into_iter()
             .map(|(delta_relation_symbol, rule)| {

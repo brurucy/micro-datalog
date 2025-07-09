@@ -1,6 +1,7 @@
 use std::fmt::{Debug, Formatter};
+use serde::{Serialize, Deserialize};
 
-#[derive(Eq, Ord, PartialEq, PartialOrd, Clone, Hash)]
+#[derive(Eq, Ord, PartialEq, PartialOrd, Clone, Hash, Serialize, Deserialize)]
 pub enum TypedValue {
     Str(String),
     Int(usize),
@@ -273,27 +274,6 @@ macro_rules! build_query {
     (@matcher $builder:expr, _) => {{
         $builder.with_any();
     }};
-    (@matcher $builder:expr, $value:expr) => {{
-        $builder.with_constant($value.into());
-    }};
-}
-
-#[macro_export]
-macro_rules! build_adorned_query {
-    // Take the original relation name and matchers
-    ($relation:ident ( $( $matcher:tt ),* $(,)? )) => {{
-        let adorned_name = format!("{}_bf", stringify!($relation));
-        let mut builder = QueryBuilder::new(&adorned_name);
-        $(
-            build_adorned_query!(@matcher builder, $matcher);
-        )*
-        builder.query
-    }};
-    // Handle wildcards just like build_query
-    (@matcher $builder:expr, _) => {{
-        $builder.with_any();
-    }};
-    // Handle constants just like build_query
     (@matcher $builder:expr, $value:expr) => {{
         $builder.with_constant($value.into());
     }};

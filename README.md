@@ -107,6 +107,10 @@ mod tests {
 }
 ```
 
+# Benchmark Commands
+
+## Basic Usage
+```bash
 # Run all benchmarks
 cargo run --release -- --micro-streaming --micro-magic --micro-tabling --crepe --ascent
 
@@ -118,3 +122,55 @@ cargo run --release -- --edges 10000 --batch-size 500 --micro-magic --micro-tabl
 
 # Run benchmarks without visualization
 cargo run --release -- --micro-magic --micro-tabling --skip-visualization
+```
+
+## Advanced Usage
+```bash
+# Run with all available data
+cargo run --release -- --use-all-data --micro-magic --micro-tabling
+
+# Find all paths from a specific source node
+cargo run --release -- --query-source 443 --micro-magic --micro-tabling --ascent
+
+# Find all paths to a specific target node
+cargo run --release -- --query-target 5678 --micro-magic --micro-tabling
+
+# Find a specific path between two nodes
+cargo run --release -- --query-source 1234 --query-target 5678 --micro-magic --micro-tabling
+
+# Find all paths in the graph (both source and target are wildcards)
+cargo run --release -- --micro-magic --micro-tabling
+
+# Combine options
+cargo run --release -- --use-all-data --query-source 1234 --micro-magic --micro-tabling
+```
+
+## Command Line Options
+- `--edges <N>`: Number of edges to process (default: 20000)
+- `--batch-size <N>`: Batch size for processing edges (default: 1000)
+- `--use-all-data`: Use all available data instead of limiting to specified number of edges
+- `--query-source <N>`: Source node for the query (if not specified, acts as a wildcard)
+- `--query-target <N>`: Target node for the query (if not specified, acts as a wildcard)
+- `--micro-streaming`: Run micro streaming benchmark
+- `--micro-magic`: Run micro magic benchmark
+- `--micro-tabling`: Run micro tabling benchmark
+- `--crepe`: Run crepe benchmark
+- `--ascent`: Run ascent benchmark
+- `--skip-visualization`: Skip generating visualizations
+- `--visualize-results <PATH>`: Generate visualizations from an existing results JSON file
+- `--y-scale-performance <N>`: Maximum value for performance y-axis in visualization (default: 3000.0)
+- `--y-scale-tuples <N>`: Maximum value for tuples y-axis in visualization (default: 509000.0)
+
+## Visualization Commands
+```bash
+# Generate visualizations from an existing results file
+cargo run --release -- --visualize-results results_20240418_123456.json
+
+# Generate visualizations with custom y-axis scales
+cargo run --release -- --visualize-results results_20240418_123456.json --y-scale-performance 5000.0 --y-scale-tuples 1000000.0
+
+# Generate visualizations after running benchmarks
+cargo run --release -- --micro-magic --micro-tabling --y-scale-performance 5000.0
+```
+
+cargo run --release -- --visualize-results results_20250502_160851.json --y-scale-performance 33.0

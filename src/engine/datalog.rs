@@ -87,14 +87,14 @@ impl MicroRuntime {
     }
 
     pub fn query_program<'a>(
-        &mut self,
+        &self,
         query: &Query,
         program: Program,
         strategy: &Strategy,
     ) -> (Vec<Vec<TypedValue>>, Duration) {
         match strategy {
             Strategy::BottomUp => {
-                let mut evaluator = MagicEvaluator::new(
+                let evaluator = MagicEvaluator::new(
                     self.processed.clone(),
                     self.unprocessed_insertions.clone(),
                     program
@@ -104,7 +104,7 @@ impl MicroRuntime {
             }
         
             Strategy::TopDown => {
-                let mut evaluator = SubsumptiveEvaluator::new(
+                let evaluator = SubsumptiveEvaluator::new(
                     self.processed.clone(),
                     self.unprocessed_insertions.clone(),
                     program,

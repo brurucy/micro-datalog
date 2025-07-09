@@ -169,18 +169,19 @@ pub fn visualize_results(
     results: &[BenchmarkResult],
     vis_dir: &Path,
     options: &VisualizationOptions,
+    results_filename: &str,
 ) -> Result<(), Box<dyn Error>> {
     // Create visualization directory if it doesn't exist
     std::fs::create_dir_all(vis_dir)?;
 
-    // Generate timestamp for the visualization files
-    let timestamp = Local::now().format("%Y%m%d_%H%M%S").to_string();
+    // Extract base name from results filename (remove .json extension)
+    let base_name = results_filename.trim_end_matches(".json");
 
     // Create performance plot
-    create_performance_plot(results, vis_dir, options, &timestamp)?;
+    create_performance_plot(results, vis_dir, options, base_name)?;
 
     // Create tuples plot
-    //create_tuples_plot(results, vis_dir, options, &timestamp)?;
+    //create_tuples_plot(results, vis_dir, options, base_name)?;
 
     Ok(())
 } 

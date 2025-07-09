@@ -373,8 +373,7 @@ fn run_benchmarks(
 
 
     //for line_batch in &data.lines().chunks(batch_size) {
-    //for line_batch in &parsed_data.iter().chunks(batch_size) {
-    for line_batch in &parsed_data.iter().chunks(parsed_data.len()) {
+    for line_batch in &parsed_data.iter().chunks(batch_size) {
         let batch: Vec<_> = line_batch
             //.map(|line| parse_edge(line))
             .map(|(s, p, o)| (*s, *p, *o))

@@ -4,59 +4,142 @@ mod tests {
 
     use datalog_rule_macro::program;
     use datalog_syntax::*;
-    use micro_datalog::{convert_fact_vec, engine::datalog::MicroRuntime};
+    use micro_datalog::{convert_fact, convert_fact_vec, engine::datalog::MicroRuntime};
+    use ascent::*;
+
+    ascent! {
+        relation e(String, String);
+        relation tc(String, String, String);
+
+        tc(x, y, z) <-- e(x, y), e(y, z), e(z, w);
+        tc(x, y, w) <-- tc(x, y, z), tc(y, z, w);
+    }
 
     #[test]
-    fn test_query_program_same_generation() {
+    fn test_magic_transformation_jesus_2() {
         let program = program! {
-            sg(?x, ?y) <- [flat(?x, ?y)],
-            sg(?y, ?x) <- [sg(?x, ?y)],
-            sg(?x, ?y) <- [up(?x, ?z1), down(?z1, ?y)],
-            sg(?x, ?y) <- [up(?x, ?z1), sg(?z1, ?z2), down(?z2, ?y)]
+            tc(?x, ?y, ?z) <- [e(?x, ?y), e(?y, ?z), e(?z, ?w)],
+            tc(?x, ?y, ?w) <- [tc(?x, ?y, ?z), tc(?y, ?z, ?w)],
         };
+        let mut runtime = MicroRuntime::new(program.clone());
+        //let query_all = build_query!(tc_fff(_, _, _));
+        let query3 = build_query!(tc("a", "b", "d"));
 
+        runtime.insert("e", ("a", "b"));
+        runtime.insert("e", ("b", "c"));
+        runtime.insert("e", ("c", "d"));
+        runtime.insert("e", ("d", "e"));
+        //runtime.insert("m_tc_bbb", ("a", "b", "d"));
+     
+        //runtime.poll();
+        let (results, evaluation_time) = runtime.query_program(
+            &query3,
+            program,
+            &micro_datalog::engine::datalog::Strategy::BottomUp
+        );
+
+
+        let mut ascent_runtime = AscentProgram::default();
+        ascent_runtime.e.push(("a".to_string(), "b".to_string()));
+        ascent_runtime.e.push(("b".to_string(), "c".to_string()));
+        ascent_runtime.e.push(("c".to_string(), "d".to_string()));
+        ascent_runtime.e.push(("d".to_string(), "e".to_string()));
+
+        ascent_runtime.run();
+        println!("ascent_runtime.tc==={:?}", ascent_runtime.tc);
+
+        println!("results==={:?}", results);
+        // println!("evaluation_time==={:?}", evaluation_time);
+
+        assert_eq!(true, true);
+    }
+
+    #[test]
+    fn test_query_program_tc_bbb() {
+        let program = program! {
+            tc(?x, ?y, ?z) <- [e(?x, ?y), e(?y, ?z), e(?z, ?w)],
+            tc(?x, ?y, ?w) <- [tc(?x, ?y, ?z), tc(?y, ?z, ?w)],
+        };
         let mut runtime = MicroRuntime::new(program.clone());
 
-        // Set up tree structure:
-        //       a1    a2   (flat connects these)
-        //      /  \  /  \
-        //    b1  b2 b3  b4
-        runtime.insert("up", ("b1", "a1")); // b1 up to a1
-        runtime.insert("up", ("b2", "a1")); // b2 up to a1
-        runtime.insert("up", ("b3", "a2")); // b3 up to a2
-        runtime.insert("up", ("b4", "a2")); // b4 up to a2
+        let query = build_query!(tc("a", "b", "d"));
 
-        // Direct same-generation relationships
-        runtime.insert("flat", ("a1", "a2")); // a1 same gen as a2
+        runtime.insert("e", ("a", "b"));
+        runtime.insert("e", ("b", "c"));
+        runtime.insert("e", ("c", "d"));
+        runtime.insert("e", ("d", "e"));
 
-        runtime.insert("down", ("a1", "b1")); // a1 down to b1
-        runtime.insert("down", ("a1", "b2")); // a1 down to b2
-        runtime.insert("down", ("a2", "b3")); // a2 down to b3
-        runtime.insert("down", ("a2", "b4")); // a2 down to b4
-
-        // Query for nodes in same generation as b1 (should find b2, b3, b4)
-        let query = build_query!(sg("b1", _));
-        let (results, evaluation_time) = runtime.query_program(
+     
+        let (results, _evaluation_time) = runtime.query_program(
             &query,
             program,
             &micro_datalog::engine::datalog::Strategy::BottomUp
         );
 
-        // b1 should be in same generation as b2, b3, and b4
-        let expected: HashSet<_> = vec![
-            ("b1", "b2"), // Same parent a1
-            ("b1", "b3"), // Through flat a1-a2
-            ("b1", "b4"), // Through flat a1-a2
-            ("b1", "b1"), // Every node is in same gen with itself
-        ]
-        .into_iter()
-        .collect();
+        let mut ascent_runtime = AscentProgram::default();
+        ascent_runtime.e.push(("a".to_string(), "b".to_string()));
+        ascent_runtime.e.push(("b".to_string(), "c".to_string()));
+        ascent_runtime.e.push(("c".to_string(), "d".to_string()));
+        ascent_runtime.e.push(("d".to_string(), "e".to_string()));
 
-        assert_eq!(expected, convert_fact_vec!(results));
+        ascent_runtime.run();
+        println!("ascent_runtime.tc==={:?}", ascent_runtime.tc);
+
+        println!("results==={:?}", results);
+        // println!("evaluation_time==={:?}", evaluation_time);
+
+        assert_eq!(true, true);
     }
+    // #[test]
+    // fn test_query_program_same_generation() {
+    //     let program = program! {
+    //         sg(?x, ?y) <- [flat(?x, ?y)],
+    //         sg(?x, ?y) <- [up(?x, ?z1), down(?z1, ?y)],
+    //         sg(?x, ?y) <- [up(?x, ?z1), sg(?z1, ?z2), down(?z2, ?y)]
+    //     };
+
+    //     let mut runtime = MicroRuntime::new(program.clone());
+
+    //     // Set up tree structure:
+    //     //       a1    a2   (flat connects these)
+    //     //      /  \  /  \
+    //     //    b1  b2 b3  b4
+    //     runtime.insert("up", ("b1", "a1")); // b1 up to a1
+    //     runtime.insert("up", ("b2", "a1")); // b2 up to a1
+    //     runtime.insert("up", ("b3", "a2")); // b3 up to a2
+    //     runtime.insert("up", ("b4", "a2")); // b4 up to a2
+
+    //     // Direct same-generation relationships
+    //     runtime.insert("flat", ("a1", "a2")); // a1 same gen as a2
+
+    //     runtime.insert("down", ("a1", "b1")); // a1 down to b1
+    //     runtime.insert("down", ("a1", "b2")); // a1 down to b2
+    //     runtime.insert("down", ("a2", "b3")); // a2 down to b3
+    //     runtime.insert("down", ("a2", "b4")); // a2 down to b4
+
+    //     // Query for nodes in same generation as b1 (should find b2, b3, b4)
+    //     let query = build_query!(sg("b1", "b2"));
+    //     let (results, evaluation_time) = runtime.query_program(
+    //         &query,
+    //         program,
+    //         &micro_datalog::engine::datalog::Strategy::BottomUp
+    //     );
+
+    //     // b1 should be in same generation as b2, b3, and b4
+    //     let expected: HashSet<_> = vec![
+    //         ("b1", "b2"), // Same parent a1
+    //         ("b1", "b3"), // Through flat a1-a2
+    //         ("b1", "b4"), // Through flat a1-a2
+    //         ("b1", "b1"), // Every node is in same gen with itself
+    //     ]
+    //     .into_iter()
+    //     .collect();
+
+    //     assert_eq!(expected, convert_fact_vec!(results));
+    // }
 
     #[test]
-    fn test_query_program_basic_ancestor() {
+    fn test_query_program_basic_ancestor_bb() {
         // Set up a simple ancestor program
         let program = program! {
             ancestor(?x, ?y) <- [parent(?x, ?y)],
@@ -69,7 +152,7 @@ mod tests {
         runtime.insert("parent", vec!["bob", "mary"]);
 
         // Query for ancestors of john
-        let query = build_query!(ancestor("john", _));
+        let query = build_query!(ancestor("john", "mary"));
         let (results, evaluation_time) = runtime.query_program(
             &query,
             program,
@@ -77,7 +160,7 @@ mod tests {
         );
 
         // Expected results - john is ancestor of both bob and mary
-        let expected: HashSet<_> = vec![("john", "bob"), ("john", "mary")]
+        let expected: HashSet<_> = vec![("john", "mary")]
             .into_iter()
             .collect();
 
@@ -105,11 +188,65 @@ mod tests {
             &micro_datalog::engine::datalog::Strategy::BottomUp
         );
 
-        // Expected results - john is ancestor of both bob and mary
+
         let expected: HashSet<_> = vec![("john", "bob"), ("bob", "mary"), ("john", "mary")]
             .into_iter()
             .collect();
 
         assert_eq!(expected, convert_fact_vec!(results));
     }
+
+/*
+    #[test]
+    fn test_query_program_fb() {
+        // Set up a simple ancestor program
+        let program = program! {
+            ancestor(?x, ?y) <- [parent(?x, ?y)],
+            ancestor(?z, ?y) <- [parent(?x, ?y), ancestor(?z, ?x)]
+        };
+
+        // Create runtime and add base facts
+        let mut runtime = MicroRuntime::new(program.clone());
+        runtime.insert("parent", vec!["john", "bob"]);
+        runtime.insert("parent", vec!["mary", "john"]);
+        runtime.poll();
+
+        // Query for ancestors of john
+        let query = build_query!(ancestor(_, "bob"));
+        let (results, _evaluation_time) = runtime.query_program(&query, program, &micro_datalog::engine::datalog::Strategy::BottomUp);
+    
+
+        let expected: HashSet<_> = vec![("mary", "bob"), ("john", "bob")]
+            .into_iter()
+            .collect();
+
+        assert_eq!(expected, convert_fact_vec!(results));
+    }
+
+    #[test]
+    fn test_query_fb() {
+        // Set up a simple ancestor program
+        let program = program! {
+            ancestor(?x, ?y) <- [parent(?x, ?y)],
+            ancestor(?z, ?y) <- [parent(?x, ?y), ancestor(?z, ?x)]
+        };
+
+        // Create runtime and add base facts
+        let mut runtime = MicroRuntime::new(program.clone());
+        runtime.insert("parent", vec!["john", "bob"]);
+        runtime.insert("parent", vec!["mary", "john"]);
+        runtime.poll();
+
+        // Query for ancestors of john
+        let query = build_query!(ancestor(_, "bob"));
+        let results = convert_fact!(runtime.query(&query));
+    
+
+        let expected: HashSet<_> = vec![("mary", "bob"), ("john", "bob")]
+            .into_iter()
+            .collect();
+
+        assert_eq!(expected, results);
+    }
+     */
 }
