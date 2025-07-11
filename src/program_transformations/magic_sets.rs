@@ -14,11 +14,12 @@ use std::collections::HashSet;
 ///
 /// # Returns
 /// A new program with magic sets transformation applied
-pub fn apply_magic_transformation(program: &Program, query: &Query) -> Program {
+pub fn apply_magic_transformation(program: &Program, query: &Query) -> (Program, HashSet<Atom>) {
     let mut transformed_rules = Vec::with_capacity(program.inner.len() * 2); // = magic rules + modified rules
     let mut processed_adorned_preds = HashSet::new();
     let mut seen_rules = HashSet::new();
     let mut to_process = Vec::new();
+    let mut magic_seeds = HashSet::new();
 
     // Initialize with the query's adorned predicate
     if let Some(initial_rule) = get_rules_for_predicate(&program.inner, query.symbol).first() {
@@ -58,9 +59,10 @@ pub fn apply_magic_transformation(program: &Program, query: &Query) -> Program {
                 }
             }
 
-   
             // Add modified original rule
-            let modified_rule = modify_original_rule(program, rule, &adorned_pred);
+            let (modified_rule, magic_seeds_from_rules) =
+                modify_original_rule(program, rule, &adorned_pred);
+            magic_seeds.extend(magic_seeds_from_rules);
 
             for modified_body_rule in modified_rule.body.clone() {
                 if !is_magic_predicate(&modified_body_rule.symbol)
@@ -75,7 +77,9 @@ pub fn apply_magic_transformation(program: &Program, query: &Query) -> Program {
             }
 
             // Add magic rules
-            let magic_rules = create_magic_rules(program, &modified_rule, &adorned_pred);
+            let (magic_rules, magic_seeds_from_magic_rules) =
+                create_magic_rules(program, &modified_rule, &adorned_pred);
+            magic_seeds.extend(magic_seeds_from_magic_rules);
 
             for magic_rule in magic_rules {
                 let rule_str = format!("{:?}", magic_rule);
@@ -109,7 +113,114 @@ pub fn apply_magic_transformation(program: &Program, query: &Query) -> Program {
             }
         }
     }
-    Program::from(transformed_rules)
+
+    let program_test = program! {
+        T_bbb(?s, ?p, ?o) <- [magic_T_bbb(?s, ?p, ?o), RDF(?s, ?p, ?o)],
+        T_bbf(?s, ?p, ?o) <- [magic_T_bbf(?s, ?p), RDF(?s, ?p, ?o)],
+        T_bfb(?s, ?p, ?o) <- [magic_T_bfb(?s, ?o), RDF(?s, ?p, ?o)],
+        T_bff(?s, ?p, ?o) <- [magic_T_bff(?s), RDF(?s, ?p, ?o)],
+        T_fbb(?s, ?p, ?o) <- [magic_T_fbb(?p, ?o), RDF(?s, ?p, ?o)],
+        T_fbf(?s, ?p, ?o) <- [magic_T_fbf(?p), RDF(?s, ?p, ?o)],
+        T_ffb(?s, ?p, ?o) <- [magic_T_ffb(?o), RDF(?s, ?p, ?o)],
+        T_fff(?s, ?p, ?o) <- [RDF(?s, ?p, ?o)],
+        //magic_T_bff(?x) <- [magic_T_bff(?x), T_fbf(?a, 2, ?b)],
+        magic_T_bff(?x) <- [magic_T_bbf(?x, ?b), T_fbb(?a, 2, ?b)],
+        T_bbb(?x, ?b, ?y) <- [magic_T_bbb(?x, ?b, ?y), T_fbb(?a, 2, ?b), T_bfb(?x, ?a, ?y)],
+        T_bbf(?x, ?b, ?y) <- [magic_T_bbf(?x, ?b), T_fbb(?a, 2, ?b), T_bff(?x, ?a, ?y)],
+        T_bfb(?x, ?b, ?y) <- [magic_T_bfb(?x, ?y), T_bfb(?x, ?a, ?y), T_fbf(?a, 2, ?b)],
+        T_bff(?x, ?b, ?y) <- [magic_T_bff(?x), T_bff(?x, ?a, ?y), T_fbf(?a, 2, ?b)],
+        T_fbb(?x, ?b, ?y) <- [magic_T_fbb(?b, ?y), T_fbb(?a, 2, ?b), T_ffb(?x, ?a, ?y)],
+        T_fbf(?x, ?b, ?y) <- [magic_T_fbf(?b), T_fbb(?a, 2, ?b), T_fff(?x, ?a, ?y)],
+        T_ffb(?x, ?b, ?y) <- [magic_T_ffb(?y), T_ffb(?x, ?a, ?y), T_fbf(?a, 2, ?b)],
+        T_fff(?x, ?b, ?y) <- [T_fbf(?a, 2, ?b), T_fff(?x, ?a, ?y)],
+        magic_T_bfb(?x, ?y) <- [magic_T_bbb(?x, ?b, ?y), T_fbb(?a, 2, ?b)],
+        //magic_T_bfb(?x, ?y) <- [magic_T_bfb(?x, ?y), T_fbf(?a, 2, ?b)],
+        magic_T_bbf(?x, 1) <- [magic_T_bff(?x)],
+        magic_T_bbf(?x, 1) <- [magic_T_bfb(?x, ?z)],
+        magic_T_bbf(?x, 1) <- [magic_T_bbb(?x, 1, ?z)],
+        T_bbb(?x, 1, ?z) <- [magic_T_bfb(?x, ?z), T_bbf(?x, 1, ?y), T_fbb(?y, 1, ?z)],
+        T_bbb(?x, 1, ?z) <- [magic_T_bbb(?x, 1, ?z), T_bbf(?x, 1, ?y), T_fbb(?y, 1, ?z)],
+        T_bbf(?x, 1, ?z) <- [magic_T_bff(?x), T_bbf(?x, 1, ?y), T_fbf(?y, 1, ?z)],
+        T_bbf(?x, 1, ?z) <- [magic_T_bbf(?x, 1), T_bbf(?x, 1, ?y), T_fbf(?y, 1, ?z)],
+        T_fbb(?x, 1, ?z) <- [magic_T_ffb(?z), T_fbb(?y, 1, ?z),T_fbf(?x, 1, ?y)],
+        T_fbb(?x, 1, ?z) <- [magic_T_fbb(1, ?z), T_fbb(?y, 1, ?z), T_fbf(?x, 1, ?y)],
+        T_fbf(?x, 1, ?z) <- [T_fbf(?x, 1, ?y), T_fbf(?y, 1, ?z)],
+        magic_T_bbf(?x, 2) <- [magic_T_bff(?x)],
+        magic_T_bbf(?x, 2) <- [magic_T_bfb(?x, ?z)],
+        magic_T_bbf(?x, 2) <- [magic_T_bbb(?x, 2, ?z)],
+        T_bbb(?x, 2, ?z) <- [magic_T_bfb(?x, ?z), T_bbf(?x, 2, ?y), T_fbb(?y, 2, ?z)],
+        T_bbb(?x, 2, ?z) <- [magic_T_bbb(?x, 2, ?z), T_bbf(?x, 2, ?y), T_fbb(?y, 2, ?z)],
+        T_bbf(?x, 2, ?z) <- [magic_T_bff(?x), T_bbf(?x, 2, ?y), T_fbf(?y, 2, ?z)],
+        T_bbf(?x, 2, ?z) <- [magic_T_bbf(?x, 2), T_bbf(?x, 2, ?y), T_fbf(?y, 2, ?z)],
+        T_fbb(?x, 2, ?z) <- [magic_T_ffb(?z), T_fbb(?y, 2, ?z), T_fbf(?x, 2, ?y)], //
+        T_fbb(?x, 2, ?z) <- [magic_T_fbb(2, ?z), T_fbb(?y, 2, ?z),T_fbf(?x, 2, ?y)], //
+        T_fbf(?x, 2, ?z) <- [T_fbf(?x, 2, ?y), T_fbf(?y, 2, ?z)],
+        //magic_T_bff(?y) <- [magic_T_bff(?y), T_fbf(?a, 3, ?x)],
+        magic_T_bff(?y) <- [magic_T_bfb(?y, ?x), T_fbb(?a, 3, ?x)],
+        //magic_T_bff(?y) <- [magic_T_bbf(?y, 0), T_fbf(?a, 3, ?x)],
+        magic_T_bff(?y) <- [magic_T_bbb(?y, 0, ?x), T_fbb(?a, 3, ?x)],
+        magic_T_ffb(?y) <- [magic_T_fbb(?b, ?y), T_fbb(?a, 2, ?b)],
+        //magic_T_ffb(?y) <- [magic_T_ffb(?y), T_fbf(?a, 2, ?b)],
+        T_bbb(?y, 0, ?x) <- [magic_T_bfb(?y, ?x), T_fbb(?a, 3, ?x), T_bff(?y, ?a, ?z)],
+        T_bbb(?y, 0, ?x) <- [magic_T_bbb(?y, 0, ?x), T_fbb(?a, 3, ?x), T_bff(?y, ?a, ?z)],
+        T_bbf(?y, 0, ?x) <- [magic_T_bff(?y), T_bff(?y, ?a, ?z), T_fbf(?a, 3, ?x)], //
+        //T_bbf(?y, 0, ?x) <- [magic_T_bbf(?y, 0), T_fbf(?a, 3, ?x), T_bff(?y, ?a, ?z)],
+        T_bbf(?y, 0, ?x) <- [magic_T_bbf(?y, 0), T_bff(?y, ?a, ?z),T_fbf(?a, 3, ?x)],
+        T_fbb(?y, 0, ?x) <- [magic_T_ffb(?x), T_fbb(?a, 3, ?x), T_fff(?y, ?a, ?z)],
+        T_fbb(?y, 0, ?x) <- [magic_T_fbb(0, ?x), T_fbb(?a, 3, ?x), T_fff(?y, ?a, ?z)],
+        T_fbf(?y, 0, ?x) <- [T_fbf(?a, 3, ?x), T_fff(?y, ?a, ?z)],
+        //magic_T_ffb(?z) <- [magic_T_bff(?z), T_fbf(?a, 4, ?x)],
+        magic_T_ffb(?z) <- [magic_T_bfb(?z, ?x), T_fbb(?a, 4, ?x)],
+        //magic_T_ffb(?z) <- [magic_T_bbf(?z, 0), T_fbf(?a, 4, ?x)],
+        magic_T_ffb(?z) <- [magic_T_bbb(?z, 0, ?x), T_fbb(?a, 4, ?x)],
+        //magic_T_bbf(?z, 0) <- [magic_T_bff(?z), T_fbf(?x, 1, ?y)],
+        magic_T_bbf(?z, 0) <- [magic_T_bfb(?z, ?y), T_fbb(?x, 1, ?y)],
+        //magic_T_bbf(?z, 0) <- [magic_T_bbf(?z, 0), T_fbf(?x, 1, ?y)],
+        magic_T_bbf(?z, 0) <- [magic_T_bbb(?z, 0, ?y), T_fbb(?x, 1, ?y)],
+        T_bbb(?z, 0, ?x) <- [magic_T_bfb(?z, ?x), T_fbb(?a, 4, ?x), T_ffb(?y, ?a, ?z)],
+        T_bbb(?z, 0, ?x) <- [magic_T_bbb(?z, 0, ?x), T_fbb(?a, 4, ?x), T_ffb(?y, ?a, ?z)],
+        //T_bbf(?z, 0, ?x) <- [magic_T_bff(?z), T_fbf(?a, 4, ?x), T_ffb(?y, ?a, ?z)],
+        T_bbf(?z, 0, ?x) <- [magic_T_bff(?z), T_ffb(?y, ?a, ?z), T_fbf(?a, 4, ?x)],
+        //T_bbf(?z, 0, ?x) <- [magic_T_bbf(?z, 0), T_fbf(?a, 4, ?x), T_ffb(?y, ?a, ?z)],
+        T_bbf(?z, 0, ?x) <- [magic_T_bbf(?z, 0), T_ffb(?y, ?a, ?z),T_fbf(?a, 4, ?x)],
+        T_fbb(?z, 0, ?x) <- [magic_T_ffb(?x), T_fbb(?a, 4, ?x), T_fff(?y, ?a, ?z)],
+        T_fbb(?z, 0, ?x) <- [magic_T_fbb(0, ?x), T_fbb(?a, 4, ?x), T_fff(?y, ?a, ?z)],
+        T_fbf(?z, 0, ?x) <- [T_fbf(?a, 4, ?x), T_fff(?y, ?a, ?z)],
+        T_bbb(?z, 0, ?y) <- [magic_T_bfb(?z, ?y), T_fbb(?x, 1, ?y), T_bbf(?z, 0, ?x)],
+        T_bbb(?z, 0, ?y) <- [magic_T_bbb(?z, 0, ?y), T_fbb(?x, 1, ?y), T_bbf(?z, 0, ?x)],
+        //T_bbf(?z, 0, ?y) <- [magic_T_bff(?z), T_bbf(?z, 0, ?x),T_fbf(?x, 1, ?y)],
+        T_bbf(?z, 0, ?y) <- [magic_T_bff(?z), T_bbf(?z, 0, ?x),T_fbf(?x, 1, ?y)],
+        //T_bbf(?z, 0, ?y) <- [magic_T_bbf(?z, 0), T_fbf(?x, 1, ?y), T_bbf(?z, 0, ?x)],
+        T_bbf(?z, 0, ?y) <- [magic_T_bbf(?z, 0),  T_bbf(?z, 0, ?x), T_fbf(?x, 1, ?y)],
+        T_fbb(?z, 0, ?y) <- [magic_T_ffb(?y), T_fbb(?x, 1, ?y), T_fbf(?z, 0, ?x)],
+        T_fbb(?z, 0, ?y) <- [magic_T_fbb(0, ?y), T_fbb(?x, 1, ?y), T_fbf(?z, 0, ?x)],
+        T_fbf(?z, 0, ?y) <- [T_fbf(?x, 1, ?y), T_fbf(?z, 0, ?x)],
+        magic_T_fbb(1, ?y) <- [magic_T_ffb(?y)],
+        magic_T_fbb(1, ?y) <- [magic_T_bfb(?z, ?y)],
+        magic_T_fbb(1, ?y) <- [magic_T_bbb(?z, 0, ?y)],
+        magic_T_fbb(1, ?y) <- [magic_T_fbb(0, ?y)],
+        magic_T_fbb(1, ?z) <- [magic_T_bfb(?x, ?z), T_bbf(?x, 1, ?y)],
+        magic_T_fbb(1, ?z) <- [magic_T_bbb(?x, 1, ?z), T_bbf(?x, 1, ?y)],
+        //magic_T_fbb(1, ?z) <- [magic_T_ffb(?z), T_fbf(?x, 1, ?y)],
+        //magic_T_fbb(1, ?z) <- [magic_T_fbb(1, ?z), T_fbf(?x, 1, ?y)],
+        magic_T_fbb(2, ?b) <- [magic_T_fbf(?b)],
+        magic_T_fbb(2, ?b) <- [magic_T_fbb(?b, ?y)],
+        magic_T_fbb(2, ?b) <- [magic_T_bbf(?x, ?b)],
+        magic_T_fbb(2, ?b) <- [magic_T_bbb(?x, ?b, ?y)],
+        magic_T_fbb(2, ?z) <- [magic_T_bfb(?x, ?z), T_bbf(?x, 2, ?y)],
+        magic_T_fbb(2, ?z) <- [magic_T_bbb(?x, 2, ?z), T_bbf(?x, 2, ?y)],
+        //magic_T_fbb(2, ?z) <- [magic_T_ffb(?z), T_fbf(?x, 2, ?y)],
+        //magic_T_fbb(2, ?z) <- [magic_T_fbb(2, ?z), T_fbf(?x, 2, ?y)],
+        magic_T_fbb(3, ?x) <- [magic_T_ffb(?x)],
+        magic_T_fbb(3, ?x) <- [magic_T_bfb(?y, ?x)],
+        magic_T_fbb(3, ?x) <- [magic_T_bbb(?y, 0, ?x)],
+        magic_T_fbb(3, ?x) <- [magic_T_fbb(0, ?x)],
+        magic_T_fbb(4, ?x) <- [magic_T_ffb(?x)],
+        magic_T_fbb(4, ?x) <- [magic_T_bfb(?z, ?x)],
+        magic_T_fbb(4, ?x) <- [magic_T_bbb(?z, 0, ?x)],
+        magic_T_fbb(4, ?x) <- [magic_T_fbb(0, ?x)],
+    };
+    (Program::from(program_test), magic_seeds)
 }
 
 /// Creates a magic seed fact for a given query.
@@ -148,28 +259,17 @@ fn create_magic_rules(
     program: &Program,
     modified_rule: &Rule,
     adorned_head_atom: &AdornedAtom,
-) -> Vec<Rule> {
+) -> (Vec<Rule>, HashSet<Atom>) {
     let mut magic_rules = Vec::new();
     let mut binding_chain = Vec::new();
     let mut bound_variables = get_bound_vars_from_adorned_atom(adorned_head_atom);
+    let mut magic_seeds = HashSet::new();
 
     for (i, body_atom) in modified_rule.body.iter().enumerate() {
         if is_magic_predicate(&body_atom.symbol) {
             binding_chain.push(body_atom.clone());
             continue;
         }
-
-        // let uses_bound_vars = body_atom.terms.iter().any(|term| {
-        //     if let Term::Variable(var) = term {
-        //         bound_variables.contains(var)
-        //     } else {
-        //         false
-        //     }
-        // });
-
-        // if !uses_bound_vars {
-        //     continue;
-        // }
 
         let (pred_name, _binding_pattern) = get_pred_name_and_binding_pattern(&body_atom.symbol);
         if !is_derived_predicate(program, &pred_name) {
@@ -182,22 +282,31 @@ fn create_magic_rules(
             }
             continue;
         } else {
-
             let magic_head = make_magic_atom(&create_adorned_atom_from_adorned_pred(body_atom));
             if !magic_head.terms.is_empty() {
-                let has_magic_atoms_besides_itself_in_binding_chain = (!binding_chain.iter().any(|atom| {
-                    atom.symbol == magic_head.symbol && atom.terms == magic_head.terms
-                }) || binding_chain.len() > 1);
+                let has_magic_atoms_besides_itself_in_binding_chain =
+                    (!binding_chain.iter().any(|atom| {
+                        atom.symbol == magic_head.symbol && atom.terms == magic_head.terms
+                    }) || binding_chain.len() > 1);
+
+                let has_variables_in_head_terms = magic_head.terms.iter().any(|term| {
+                    if let Term::Variable(_) = term {
+                        true
+                    } else {
+                        false
+                    }
+                });
+
+                if !has_variables_in_head_terms {
+                    magic_seeds.insert(magic_head);
+                }
                 // i > 0 because we don't want to create a magic rule with only a magic atom in the body
-                if i > 0
-                    && has_magic_atoms_besides_itself_in_binding_chain
-                {
+                else if i > 0 && has_magic_atoms_besides_itself_in_binding_chain {
                     magic_rules.push(Rule {
                         head: magic_head,
                         body: binding_chain.clone(),
                         id: 0,
                     });
-                  
                 }
             }
         }
@@ -213,7 +322,7 @@ fn create_magic_rules(
         }
     }
 
-    magic_rules
+    (magic_rules, magic_seeds)
 }
 
 /// Modifies an original rule by adding magic predicates and updating adornments
@@ -221,7 +330,8 @@ pub fn modify_original_rule(
     program: &Program,
     rule: &Rule,
     adorned_head_atom: &AdornedAtom,
-) -> Rule {
+) -> (Rule, HashSet<Atom>) {
+    let mut magic_seeds = HashSet::new();
     // create binding magic predicate for the body of the rule
     let bound_terms: Vec<Term> = rule
         .head
@@ -236,14 +346,25 @@ pub fn modify_original_rule(
 
     // create modified body
     let mut new_body = Vec::with_capacity(rule.body.len() + 1);
+    let has_variables = bound_terms.iter().any(|term| {
+        if let Term::Variable(_) = term {
+            true
+        } else {
+            false
+        }
+    });
+
     if !bound_terms.is_empty() {
         let magic_predicate = Atom {
             symbol: make_magic_predicate_name(adorned_head_atom),
             terms: bound_terms.clone(),
             sign: true,
         };
-
-        new_body.push(magic_predicate);
+        if has_variables {
+            new_body.push(magic_predicate);
+        } else {
+            magic_seeds.insert(magic_predicate);
+        }
     }
 
     let mut current_bound_vars = bound_terms
@@ -285,7 +406,7 @@ pub fn modify_original_rule(
         }
     }
 
-    Rule {
+    let mut modified_rule = Rule {
         head: create_adorned_head_predicate(AdornedAtom::from_atom_and_bound_vars(
             &rule.head,
             &bound_terms
@@ -298,7 +419,9 @@ pub fn modify_original_rule(
         )),
         body: new_body,
         id: 0,
-    }
+    };
+
+    (modified_rule, magic_seeds)
 }
 
 /// Creates a magic predicate from an adorned atom

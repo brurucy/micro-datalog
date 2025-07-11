@@ -15,16 +15,15 @@ use crate::args::Args;
 ascent! {
     relation RDF(usize, usize, usize);
     relation T(usize, usize, usize);
+    T(s, p, o) <-- RDF(s, p, o); 
+    T(y, 0usize, x) <-- T(a, 3usize, x), T(y, a, z); 
+    // T(z, 0usize, x) <-- T(a, 4usize, x), T(y, a, z); 
+    // T(x, 2usize, z) <-- T(x, 2usize, y), T(y, 2usize, z); 
+    // T(x, 1usize, z) <-- T(x, 1usize, y), T(y, 1usize, z); 
+    // T(z, 0usize, y) <-- T(x, 1usize, y), T(z, 0usize, x); 
 
-    T(s, p, o) <-- RDF(s, p, o);
-    T(y, 0usize, x) <-- T(a, 3usize, x), T(y, a, z);
-    T(z, 0usize, x) <-- T(a, 4usize, x), T(y, a, z);
-    T(x, 2usize, z) <-- T(x, 2usize, y), T(y, 2usize, z);
-    T(x, 1usize, z) <-- T(x, 1usize, y), T(y, 1usize, z);
-    T(z, 0usize, y) <-- T(x, 1usize, y), T(z, 0usize, x);
-    T(x, b, y) <-- T(a, 2usize, b), T(x, a, y);
 }
-
+    
 const TYPE: &'static str = "<http://www.w3.org/1999/02/22-rdf-syntax-ns#type>";
 const SUB_CLASS_OF: &'static str = "<http://www.w3.org/2000/01/rdf-schema#subClassOf>";
 const SUB_PROPERTY_OF: &'static str = "<http://www.w3.org/2000/01/rdf-schema#subPropertyOf>";
@@ -147,12 +146,33 @@ pub fn run_benchmarks_lubm1lla(
     let program = program! { 
         T(?s, ?p, ?o) <- [RDF(?s, ?p, ?o)], 
         T(?y, 0usize, ?x) <- [T(?a, 3usize, ?x), T(?y, ?a, ?z)], 
-        T(?z, 0usize, ?x) <- [T(?a, 4usize, ?x), T(?y, ?a, ?z)], 
-        T(?x, 2usize, ?z) <- [T(?x, 2usize, ?y), T(?y, 2usize, ?z)], 
-        T(?x, 1usize, ?z) <- [T(?x, 1usize, ?y), T(?y, 1usize, ?z)], 
-        T(?z, 0usize, ?y) <- [T(?x, 1usize, ?y), T(?z, 0usize, ?x)], 
-        T(?x, ?b, ?y) <- [T(?a, 2usize, ?b), T(?x, ?a, ?y)] 
+        // T(?z, 0usize, ?x) <- [T(?a, 4usize, ?x), T(?y, ?a, ?z)], 
+        // T(?x, 2usize, ?z) <- [T(?x, 2usize, ?y), T(?y, 2usize, ?z)], 
+        // T(?x, 1usize, ?z) <- [T(?x, 1usize, ?y), T(?y, 1usize, ?z)], 
+        // T(?z, 0usize, ?y) <- [T(?x, 1usize, ?y), T(?z, 0usize, ?x)], 
+        //T(?x, ?b, ?y) <- [T(?a, 2usize, ?b), T(?x, ?a, ?y)] 
     };
+
+    // let program = program! {
+    //     T(?s, ?p, ?o) <- [RDF(?s, ?p, ?o)],
+    //     T(?x, ?y, ?z) <- [T(?x, ?y, ?z), T(?y, ?z, ?w)],
+    // };
+
+    // let program = program! { 
+    //     T(?s, ?p, ?o) <- [RDF(?s, ?p, ?o)], 
+    //     T(?a, ?b, ?c) <- [T(?d, ?e, ?c), T(?a, ?b, ?o)], 
+    //     //T(?z, ?q, ?x) <- [T(?a, ?q, ?x), T(?y, ?a, ?z)], 
+    //     //T(?z, ?q, ?x) <- [T(?a, ?q, ?x), T(?y, ?a, ?z)], 
+    //     //T(?x, ?q, ?z) <- [T(?x, ?q, ?y), T(?y, ?q, ?z)], 
+    //     //T(?x, ?q, ?z) <- [T(?x, ?q, ?y), T(?y, ?q, ?z)], 
+    //     //T(?z, ?q, ?y) <- [T(?x, ?q, ?y), T(?z, ?q, ?x)], 
+    //     //T(?x, ?b, ?y) <- [T(?a, ?q, ?b), T(?x, ?a, ?y)]
+    // };
+
+    // let program = program! {
+    //     T(?s, ?p, ?o) <- [RDF(?s, ?p, ?o)],
+    //     T(?y, 0usize, ?x) <- [T(?a, 3usize, ?x), RDF(?y, ?a, ?z)],
+    // };
 
     let mut integral = Vec::new();
     let mut results = Vec::new();
@@ -215,8 +235,9 @@ pub fn run_benchmarks_lubm1lla(
                 integral.len(),
                 time,
                 tuples,
-                result_tuples,
+                result_tuples.clone(),
             ));
+            println!("Micro-streaming result tuples number: {:?}", result_tuples.len());
         }
 
         if args.micro_magic {
@@ -235,8 +256,9 @@ pub fn run_benchmarks_lubm1lla(
                 integral.len(),
                 time,
                 tuples,
-                result_tuples,
+                vec![],
             ));
+            println!("Micro-magic result tuples number: {:?}", result_tuples.len());
         }
 
         if args.micro_tabling {
@@ -255,8 +277,10 @@ pub fn run_benchmarks_lubm1lla(
                 integral.len(),
                 time,
                 tuples,
-                result_tuples,
+                result_tuples.clone(),
             ));
+
+            println!("Micro-tabling result tuples number: {:?}", result_tuples.len());
         }
 
         if args.ascent {
@@ -278,8 +302,9 @@ pub fn run_benchmarks_lubm1lla(
                 integral.len(),
                 time,
                 tuples,
-                converted_result_tuples,
+                converted_result_tuples.clone(),
             ));
+            println!("Ascent result tuples number: {:?}", converted_result_tuples.len());
         }
 
         // Print progress

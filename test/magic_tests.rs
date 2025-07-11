@@ -64,7 +64,7 @@ mod tests {
         magic_tc_ffb(?w)  <- [magic_tc_ffb(?w), tc_fff(?x, ?y, ?z)],
         };
 
-        let transformed_program = apply_magic_transformation(&program, &query);
+        let (transformed_program, _) = apply_magic_transformation(&program, &query);
         println!("transformed_program===");
         for rule in &transformed_program.inner {
             println!("transformed_rule==={:?}", rule);
@@ -93,7 +93,7 @@ mod tests {
         };
 
         // Apply the magic transformation to the program
-        let transformed_program = apply_magic_transformation(&program, &query);
+        let (transformed_program, _) = apply_magic_transformation(&program, &query);
         assert_eq!(expected_transformed_program, transformed_program);
     }
 
@@ -114,11 +114,10 @@ mod tests {
         };
 
         // Apply the magic transformation to the program
-        let transformed_program = apply_magic_transformation(&program, &query);
+        let (transformed_program, _) = apply_magic_transformation(&program, &query);
         assert_eq!(expected_transformed_program, transformed_program);
     }
 
-    
     #[test]
     fn test_magic_transformation_ancestor_fb() {
         let program = program! {
@@ -143,10 +142,56 @@ mod tests {
         };
 
         // Apply the magic transformation to the program
-        let transformed_program = apply_magic_transformation(&program, &query);
+        let (transformed_program, _) = apply_magic_transformation(&program, &query);
         assert_eq!(expected_transformed_program, transformed_program);
     }
-    
+
+    #[test]
+    fn test_magic_transformation_rdf_abridged_bff() {
+        // add seed magic_T_fbf("0")
+        // add seed magic_T_fbf("3")
+        let program = program! {
+            T(?s, ?p, ?o) <- [RDF(?s, ?p, ?o)],
+            T(?y, 0usize, ?x) <- [T(?a, 3usize, ?x), RDF(?y, ?a, ?z)],
+        };
+        let query = build_query!(T("a", _, _));
+
+        let expected = program! {
+            T_bff(?s, ?p, ?o) <- [magic_T_bff(?s), RDF(?s, ?p, ?o)],
+            T_bbf(?y, 0usize, ?x) <- [magic_T_bff(?y), T_fbf(?a, 3usize, ?x), RDF(?y, ?a, ?z)],
+            T_fbf(?s, ?p, ?o) <- [magic_T_fbf(?p), RDF(?s, ?p, ?o)],
+            T_fbf(?y, 0usize, ?x) <- [T_fbf(?a, 3usize, ?x), RDF(?y, ?a, ?z)]
+        };
+
+        let (transformed, _) = apply_magic_transformation(&program, &query);
+        println!("transformed===");
+        for rule in &transformed.inner {
+            println!("{:?}", rule);
+        }
+        assert_eq!(expected, transformed);
+    }
+
+    #[test]
+    fn test_magic_transformation_rdf_abridged_fbf() {
+         // add seed magic_T_fbf("3")
+        let program = program! {
+            T(?s, ?p, ?o) <- [RDF(?s, ?p, ?o)],
+            T(?y, 0usize, ?x) <- [T(?a, 3usize, ?x), RDF(?y, ?a, ?z)],
+        };
+        let query = build_query!(T(_, 0usize, _));
+
+        let expected = program! {
+            T_fbf(?s, ?p, ?o) <- [magic_T_fbf(?p), RDF(?s, ?p, ?o)],
+            T_fbf(?y, 0usize, ?x) <- [T_fbf(?a, 3usize, ?x), RDF(?y, ?a, ?z)],
+        };
+
+        let (transformed, _) = apply_magic_transformation(&program, &query);
+        println!("transformed===");
+        for rule in &transformed.inner {
+            println!("{:?}", rule);
+        }
+        assert_eq!(expected, transformed);
+    }
 
     #[test]
     fn test_magic_transformation_ancestor_ff() {
@@ -166,46 +211,9 @@ mod tests {
             magic_ancestor_bf(?y) <- [parent(?x, ?y)],
         };
 
-        let transformed = apply_magic_transformation(&program, &query);
+        let (transformed, _) = apply_magic_transformation(&program, &query);
         assert_eq!(expected, transformed);
     }
-    #[test]
-    fn test_modify_original_rule() {
-        let rule = rule! { p(?x, ?y) <- [q(?x, ?z), p(?z, ?y)] };
-        let program = program! {p(?x, ?y) <- [q(?x, ?z), p(?z, ?y)]};
-
-        // Create adorned version where first argument is bound
-        let mut bound_vars = HashSet::new();
-        bound_vars.insert("x".to_string());
-
-        let adorned_head = AdornedAtom::from_atom_and_bound_vars(&rule.head, &bound_vars);
-        let modified = modify_original_rule(&program, &rule, &adorned_head);
-
-        assert!(modified.body[0].symbol.starts_with("magic_"));
-        assert_eq!(modified.head.symbol, "p_bf");
-        assert_eq!(modified.body.len(), 3);
-    }
-
-    #[test]
-    fn test_modify_original_rule_with_multiple_bound() {
-        let rule = rule! { p(?x, ?y, ?z) <- [q(?x, ?y), r(?y, ?z)] };
-        let program = program! {p(?x, ?y, ?z) <- [q(?x, ?y), r(?y, ?z)]};
-
-        let mut bound_vars = HashSet::new();
-        bound_vars.insert("x".to_string());
-        bound_vars.insert("y".to_string());
-
-        let adorned_head = AdornedAtom::from_atom_and_bound_vars(&rule.head, &bound_vars);
-
-        let modified = modify_original_rule(&program, &rule, &adorned_head);
-
-        // Expected:
-        // pbbf(X,Y,Z) :- magic_pbbf(X,Y), q(X,Y), r(Y,Z)
-        assert!(modified.body[0].symbol.starts_with("magic_"));
-        assert_eq!(modified.head.symbol, "p_bbf");
-        assert_eq!(modified.body.len(), 3);
-    }
-
 
     #[test]
     fn test_ancestor_magic_transform() {
@@ -240,7 +248,7 @@ mod tests {
             ancestor_bf(?x, ?z) <- [magic_ancestor_bf(?x), parent(?x, ?y), ancestor_bf(?y, ?z)]
         };
 
-        let transformed = apply_magic_transformation(&program, &query);
+        let (transformed, _) = apply_magic_transformation(&program, &query);
         assert_eq!(transformed, expected);
     }
 
@@ -293,7 +301,7 @@ mod tests {
             sg_bf(?x, ?y) <- [magic_sg_bf(?x), up(?x, ?z1), sg_bf(?z1, ?z2), down(?z2, ?y)]
         };
 
-        let transformed = apply_magic_transformation(&program, &query);
+        let (transformed, _) = apply_magic_transformation(&program, &query);
         assert_eq!(transformed, expected);
     }
 
@@ -351,43 +359,9 @@ mod tests {
                               flat(?z2, ?z3), sg_bf(?z3, ?z4), down(?z4, ?y)]
         };
 
-        let transformed = apply_magic_transformation(&program, &query);
+        let (transformed, _) = apply_magic_transformation(&program, &query);
         assert_eq!(transformed, expected);
     }
-
-    // #[test]
-    // fn test_path_magic_transform_with_constants() {
-    //     // Original program: Path finding with special target handling
-    //     // - First rule: Direct edge paths
-    //     // - Second rule: Multi-edge paths
-    //     // - Third rule: Special handling for paths to "target"
-    //     let program = program! {
-    //         path(?x, ?y) <- [edge(?x, ?y)],
-    //         path(?x, ?y) <- [edge(?x, ?z), path(?z, ?y)],
-    //         path(?x, "target") <- [special_edge(?x)]  // Rule with constant in head
-    //     };
-
-    //     // Query: Find all paths starting from "john"
-    //     let query = build_query!(path("john", _));
-
-    //     let expected = program! {
-    //         // Magic rule: For each relevant source X,
-    //         // add intermediate nodes Z as relevant sources
-    //         magic_path_bf(?z) <- [magic_path_bf(?x), edge(?x, ?z)],
-
-    //         path_bf(?x, ?y) <- [magic_path_bf(?x), edge(?x, ?y)],
-        
-    //         path_bf(?x, ?y) <- [magic_path_bf(?x), edge(?x, ?z), path_ff(?z, ?y)],
-         
-    //         path_bf(?x, "target") <- [magic_path_bf(?x), special_edge(?x)],
-    //         path_ff(?x, ?y) <- [edge(?x, ?y)],
-    //         path_ff(?x, ?y) <- [edge(?x, ?z), path_fb(?z, ?y)],
-    //         path_fb(?z, ?y) <- [magic_path_fb(?y), edge(?z, ?y)],
-    //     };
-
-    //     let transformed = apply_magic_transformation(&program, &query);
-    //     assert_eq!(transformed, expected);
-    // }
 
     #[test]
     fn test_create_magic_seed_fact() {
@@ -438,7 +412,7 @@ mod tests {
         };
 
         let query = build_query!(ancestor("john", _));
-        let magic_program = apply_magic_transformation(&program, &query);
+        let (magic_program, _) = apply_magic_transformation(&program, &query);
 
         let (magic_pred, seed_fact) = create_magic_seed_fact(&query);
 

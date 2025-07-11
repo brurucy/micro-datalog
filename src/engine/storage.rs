@@ -128,7 +128,7 @@ impl RelationStorage {
     ) {
         let mut new_diff: HashMap<String, Vec<EphemeralValue>> = HashMap::new();
 
-        //println!("NONRECURSIVE EVALUATION START===");
+        println!("NONRECURSIVE EVALUATION START===");
         for (_idx, rule) in nonrecursive_program.inner.iter().enumerate() {
             let evaluator = RuleEvaluator::new(self, rule);
 
@@ -168,7 +168,7 @@ impl RelationStorage {
             .map(|rule| (&rule.head.symbol, RuleEvaluator::new(self, rule)))
             .collect();
 
-        //println!("RECURSIVE EVALUATION START===");
+        println!("RECURSIVE EVALUATION START===");
         let evaluation = evaluation_setup
             .into_iter()
             .map(|(delta_relation_symbol, rule)| {

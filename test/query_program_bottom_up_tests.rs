@@ -139,6 +139,15 @@ mod tests {
     // }
 
     #[test]
+    fn test_query_program_rdf_abridged_bbb() {
+        let program = program! {
+            t(?s, ?p, ?o) <- [rdf(?s, ?p, ?o)],
+            t(?y, 0usize, ?x) <- [t(?a, 3usize, ?x), t(?y, ?a, ?z)],
+            t(?x, ?b, ?y) <- [t(?a, 2usize, ?b), t(?x, ?a, ?y)]
+                };
+    }
+
+    #[test]
     fn test_query_program_basic_ancestor_bb() {
         // Set up a simple ancestor program
         let program = program! {

@@ -64,19 +64,22 @@ mod tests {
     #[test]
     fn test_query_program_rdf() {
         let program = program! { 
-            t(?s, ?p, ?o) <- [rdf(?s, ?p, ?o)], 
-            t(?y, 0usize, ?x) <- [t(?a, 3usize, ?x), t(?y, ?a, ?z)], 
-            t(?z, 0usize, ?x) <- [t(?a, 4usize, ?x), t(?y, ?a, ?z)], 
-            t(?x, 2usize, ?z) <- [t(?x, 2usize, ?y), t(?y, 2usize, ?z)], 
-            t(?x, 1usize, ?z) <- [t(?x, 1usize, ?y), t(?y, 1usize, ?z)], 
-            t(?z, 0usize, ?y) <- [t(?x, 1usize, ?y), t(?z, 0usize, ?x)], 
-            t(?x, ?b, ?y) <- [t(?a, 2usize, ?b), t(?x, ?a, ?y)]
+            T(?s, ?p, ?o) <- [RDF(?s, ?p, ?o)], 
+            T(?y, ?q, ?x) <- [T(?a, ?q, ?x), T(?y, ?a, ?z)], 
+            T(?z, ?q, ?x) <- [T(?a, ?q, ?x), T(?y, ?a, ?z)], 
+            T(?z, ?q, ?x) <- [T(?a, ?q, ?x), T(?y, ?a, ?z)], 
+            T(?x, ?q, ?z) <- [T(?x, ?q, ?y), T(?y, ?q, ?z)], 
+            T(?x, ?q, ?z) <- [T(?x, ?q, ?y), T(?y, ?q, ?z)], 
+            T(?z, ?q, ?y) <- [T(?x, ?q, ?y), T(?z, ?q, ?x)], 
+            T(?x, ?b, ?y) <- [T(?a, ?q, ?b), T(?x, ?a, ?y)]
         };
 
-        let mut runtime = MicroRuntime::new(program.clone());
-        runtime.insert("rdf", ("a", "b", "c"));
 
-        let query = build_query!(t("a", "b", "c"));
+
+        let mut runtime = MicroRuntime::new(program.clone());
+        runtime.insert("RDF", ("a", "b", "c"));
+
+        let query = build_query!(T("a", "b", _));
         let (results, evaluation_time) = runtime.query_program(&query, program, &Strategy::TopDown);
 
         let expected: HashSet<_> = vec![("a", "b", "c")]

@@ -7,6 +7,7 @@ use crate::helpers::helpers::get_queries_with_all_binding_patterns;
 use crate::program_transformations::magic_sets::{
     apply_magic_transformation, create_magic_seed_fact,
 };
+use datalog_rule_macro::program;
 use datalog_syntax::*;
 
 use super::datalog::MicroRuntime;
@@ -38,8 +39,14 @@ impl<'a> MagicEvaluator {
             .collect();
 
         // Apply magic transformation once
-        let magic_program = apply_magic_transformation(&self.program, query);
-        println!("Magic program: {:?}", magic_program.inner);
+        let (magic_program, magic_seeds) = apply_magic_transformation(&self.program, query);
+        //println!("Magic seeds: {:?}", magic_seeds);
+        
+        println!("Magic program: ====");
+        for rule in &magic_program.inner {
+            println!("{:?}", rule);
+        }
+
         // Create runtime with the transformed program
         let mut runtime = MicroRuntime::new(magic_program.clone());
 
@@ -90,13 +97,48 @@ impl<'a> MagicEvaluator {
         // Add magic seed fact
         let (magic_pred, seed_fact) = create_magic_seed_fact(query);
 
+        // add seed magic_T_fbf("0")
+        // add seed magic_T_fbf("3")
+        // let query_0 = build_query!(T(_, 0usize, _));
+        // let query_3 = build_query!(T(_, 3usize, _));
+
+
+        // let (magic_pred_0, seed_fact_0) = create_magic_seed_fact(&query_0);
+        // println!("Magic pred_0: {:?}", magic_pred_0);
+        // println!("Seed fact_0: {:?}", seed_fact_0);
+        // let (magic_pred_3, seed_fact_3) = create_magic_seed_fact(&query_3);
+        // println!("Magic pred_3: {:?}", magic_pred_3);
+        // println!("Seed fact_3: {:?}", seed_fact_3);
+
         runtime
             .unprocessed_insertions
             .inner
             .entry(magic_pred.clone())
             .or_default();
-        runtime.insert(&magic_pred, seed_fact);
+        runtime.insert(&magic_pred, seed_fact.clone());
+        // runtime.insert(&magic_pred_0, seed_fact_0.clone());
+        // runtime.insert(&magic_pred_3, seed_fact_3.clone());
 
+
+        for seed in magic_seeds {
+            let seed_symbol = seed.symbol.clone();
+            let seed_terms: Vec<TypedValue> = seed.terms.iter().filter_map(|term| {
+                if let Term::Constant(val) = term {
+                    Some(val.clone())
+                } else {
+                    None
+                }
+            }).collect();
+     
+            runtime
+                .unprocessed_insertions
+                .inner
+                .entry(seed_symbol.clone())
+                .or_default();
+            runtime.insert(&seed_symbol, seed_terms);
+        }
+
+     
 
         let start = Instant::now();
         // Evaluate the program
@@ -108,20 +150,16 @@ impl<'a> MagicEvaluator {
         let queries = get_queries_with_all_binding_patterns(query, &magic_program);
         for query_i in queries {
             let results_i: Vec<Vec<TypedValue>> = runtime
-            .processed
-            .get_relation(&query_i.symbol)
-            .iter()
-            .filter(|fact| pattern_match(&query_i, fact))
-            .map(|fact| (**fact).clone())
-            .collect();
+                .processed
+                .get_relation(&query_i.symbol)
+                .iter()
+                .filter(|fact| pattern_match(&query_i, fact))
+                .map(|fact| (**fact).clone())
+                .collect();
 
             results.extend(results_i);
         }
-        
+
         (results.into_iter().collect(), evaluation_time)
     }
-
-    
-    
- 
 }

@@ -99,7 +99,8 @@ pub fn run_benchmarks_facebook(
 ) -> Result<Vec<BenchmarkResult>, Box<dyn Error>> {
     let program = program! {
         tc(?x, ?y) <- [e(?x, ?y)],
-        tc(?x, ?z) <- [e(?x, ?y), tc(?y, ?z)]
+        tc(?x, ?z) <- [tc(?x, ?y), tc(?y, ?z)],
+        tc(0usize, ?z) <- [tc(0usize, ?y), tc(?y, ?z)],
     };
 
     let data = include_str!("../data/facebook_combined.txt");

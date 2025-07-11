@@ -503,7 +503,7 @@ impl<'a> RuleEvaluator<'a> {
         &self,
         index_storage: &mut IndexStorage,
     ) -> impl Iterator<Item = AnonymousGroundAtom> + 'a {
-        //println!("rule==={:?}", self.rule);
+        //!("rule==={:?}", self.rule);
         let stack = Stack::from(self.rule.clone());
 
         // There will always be at least two elements on the stack. Move or Select, and then Projection.
@@ -671,7 +671,10 @@ impl<'a> RuleEvaluator<'a> {
                                     ),
                                 };
                                 let mut projection = vec![];
-
+                                // println!("rule==={:?}", self.rule);
+                                // println!("stack==={:?}", stack);
+                                // println!("fact==={:?}", fact);
+                                // println!("projection_inputs==={:?}", projection_inputs);
                                 projection_inputs.iter().for_each(|projection_input| {
                                     match projection_input {
                                         ProjectionInput::Column(column) => {
@@ -701,6 +704,26 @@ mod test {
     use datalog_rule_macro::rule;
 
     use datalog_syntax::*;
+
+    #[test]
+    fn test_stack_from_rule() {
+        let rule = rule! { T_bff(?x, ?b, ?y) <- [magic_T_bff(?x), T_fbf(?a, 2, ?b), T_bff(?x, ?a, ?y)] };
+        println!("rule==={:?}", rule);
+        let stack = Stack::from(rule);
+        let expected_stack = Stack {
+            inner: vec![
+                Instruction::Move("magic_T_bff".to_string()),
+                Instruction::Select("T_fbf".to_string(), true, 1, TypedValue::Int(2)),
+                Instruction::Move("T_bff".to_string()),
+                Instruction::Join("T_fbf_1=2".to_string(), "T_bff".to_string(), vec![(0, 1)]),
+                Instruction::Project(
+                    "T_bff".to_string(),
+                    vec![ProjectionInput::Column(3), ProjectionInput::Column(2), ProjectionInput::Column(5)],
+                ),
+            ],
+        };
+        assert_eq!(stack, expected_stack);
+    }
 
     #[test]
     fn from_unary_rule_into_stack() {

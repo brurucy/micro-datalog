@@ -49,11 +49,15 @@ impl<'a> SubsumptiveEvaluator {
             terms: query
                 .matchers
                 .iter()
-                .map(|_| Term::Variable("_".to_string()))
+                .map(|m| match m {
+                    Matcher::Any => Term::Variable("_".to_string()),
+                    Matcher::Constant(val) => Term::Constant(val.clone()),
+                })
                 .collect(),
             sign: true,
         };
         let start = Instant::now();
+
         // Evaluate the query using subsumptive tabling
         let results: Vec<Vec<TypedValue>> = self.evaluate_subquery(
             &atom,
@@ -70,15 +74,15 @@ impl<'a> SubsumptiveEvaluator {
 
     pub fn evaluate_subquery(
         &self,
-        atom: &Atom,
+        subquery_atom: &Atom,
         pattern: &[Option<TypedValue>],
         table: &mut SubsumptiveTable,
         seen_queries: &mut HashSet<(String, Vec<Option<TypedValue>>)>,
         depth: usize,
     ) -> Vec<Vec<TypedValue>> {
-        println!("Evaluating subquery: {:?}, {:?}", atom.symbol, pattern);
+        println!("Evaluating subquery: {:?}, {:?}", subquery_atom.symbol, pattern);
         let mut all_results = HashSet::new();
-        let query_key = (atom.symbol.clone(), pattern.to_vec());
+        let query_key = (subquery_atom.symbol.clone(), pattern.to_vec());
 
         // Prevent infinite recursion by tracking seen queries
         if seen_queries.contains(&query_key) {
@@ -87,12 +91,12 @@ impl<'a> SubsumptiveEvaluator {
 
         seen_queries.insert(query_key.clone());
         // Check if there are already cached results from a more general (subsuming) query
-        if let Some(cached_results) = table.find_subsuming(&atom.symbol, pattern) {
+        if let Some(cached_results) = table.find_subsuming(&subquery_atom.symbol, pattern) {
             return cached_results.iter().cloned().collect();
         }
 
         // First, process base facts (facts in storage)
-        if let Some(facts) = self.unprocessed_insertions.inner.get(&atom.symbol) {
+        if let Some(facts) = self.unprocessed_insertions.inner.get(&subquery_atom.symbol) {
             let matching_facts: HashSet<_> = facts
                 .iter()
                 .filter(|fact| {
@@ -114,7 +118,7 @@ impl<'a> SubsumptiveEvaluator {
             .program
             .inner
             .iter()
-            .filter(|rule| rule.head.symbol == atom.symbol)
+            .filter(|rule| rule.head.symbol == subquery_atom.symbol)
             .cloned()
             .collect();
 
@@ -129,6 +133,7 @@ impl<'a> SubsumptiveEvaluator {
                 &mut rule_results,
                 depth + 1,
             );
+            println!("Rule {:?} results: {:?}", rule, rule_results);
             all_results.extend(rule_results);
         }
 
@@ -157,7 +162,6 @@ impl<'a> SubsumptiveEvaluator {
         depth: usize,
     ) -> () {
         println!("Evaluating rule: {:?}, {:?}", rule.head.symbol, head_pattern);
-        let indent = "  ".repeat(depth);
 
         // Create a variable binding map to track bound variables
         let mut bindings = HashMap::new();
@@ -197,7 +201,7 @@ impl<'a> SubsumptiveEvaluator {
         results: &mut HashSet<AnonymousGroundAtom>,
         depth: usize,
     ) -> () {
-        println!("Evaluating body: {:?}, {:?}", body, head);
+        //println!("Evaluating body: {:?}, {:?}", body, head);
         let indent = "  ".repeat(depth);
 
         // Base case: all body atoms have been processed
