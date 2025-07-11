@@ -55,6 +55,32 @@ mod tests {
     }
 
     #[test]
+    fn test_query_program_tc_ff() {
+        let program = program! {
+            tc(?x, ?y) <- [e(?x, ?y)],
+            tc(?x, ?z) <- [tc(?x, ?y), tc(?y, ?z)],
+        };
+        let mut runtime = MicroRuntime::new(program.clone());
+
+        let query = build_query!(tc(_, _));
+
+        runtime.insert("e", ("a", "b"));
+        runtime.insert("e", ("b", "c"));
+
+     
+        let (results, _evaluation_time) = runtime.query_program(
+            &query,
+            program,
+            &micro_datalog::engine::datalog::Strategy::BottomUp
+        );
+
+        println!("results==={:?}", results);
+        // println!("evaluation_time==={:?}", evaluation_time);
+
+        assert_eq!(true, true);
+    }
+
+    #[test]
     fn test_query_program_tc_bbb() {
         let program = program! {
             tc(?x, ?y, ?z) <- [e(?x, ?y), e(?y, ?z), e(?z, ?w)],

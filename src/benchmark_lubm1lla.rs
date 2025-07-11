@@ -15,13 +15,14 @@ use crate::args::Args;
 ascent! {
     relation RDF(usize, usize, usize);
     relation T(usize, usize, usize);
-    T(s, p, o) <-- RDF(s, p, o); 
-    T(y, 0usize, x) <-- T(a, 3usize, x), T(y, a, z); 
-    // T(z, 0usize, x) <-- T(a, 4usize, x), T(y, a, z); 
-    // T(x, 2usize, z) <-- T(x, 2usize, y), T(y, 2usize, z); 
-    // T(x, 1usize, z) <-- T(x, 1usize, y), T(y, 1usize, z); 
-    // T(z, 0usize, y) <-- T(x, 1usize, y), T(z, 0usize, x); 
 
+    T(s, p, o) <-- RDF(s, p, o); 
+    T(y, 0usize, x) <-- T(a, 3usize, x), T(y, a, z);
+    T(z, 0usize, x) <-- T(a, 4usize, x), T(y, a, z);
+    T(x, 2usize, z) <-- T(x, 2usize, y), T(y, 2usize, z);
+    T(x, 1usize, z) <-- T(x, 1usize, y), T(y, 1usize, z);
+    T(z, 0usize, y) <-- T(x, 1usize, y), T(z, 0usize, x);
+    T(x, b, y) <-- T(a, 2usize, b), T(x, a, y);
 }
     
 const TYPE: &'static str = "<http://www.w3.org/1999/02/22-rdf-syntax-ns#type>";
@@ -146,11 +147,11 @@ pub fn run_benchmarks_lubm1lla(
     let program = program! { 
         T(?s, ?p, ?o) <- [RDF(?s, ?p, ?o)], 
         T(?y, 0usize, ?x) <- [T(?a, 3usize, ?x), T(?y, ?a, ?z)], 
-        // T(?z, 0usize, ?x) <- [T(?a, 4usize, ?x), T(?y, ?a, ?z)], 
-        // T(?x, 2usize, ?z) <- [T(?x, 2usize, ?y), T(?y, 2usize, ?z)], 
-        // T(?x, 1usize, ?z) <- [T(?x, 1usize, ?y), T(?y, 1usize, ?z)], 
-        // T(?z, 0usize, ?y) <- [T(?x, 1usize, ?y), T(?z, 0usize, ?x)], 
-        //T(?x, ?b, ?y) <- [T(?a, 2usize, ?b), T(?x, ?a, ?y)] 
+        T(?z, 0usize, ?x) <- [T(?a, 4usize, ?x), T(?y, ?a, ?z)], 
+        T(?x, 2usize, ?z) <- [T(?x, 2usize, ?y), T(?y, 2usize, ?z)], 
+        T(?x, 1usize, ?z) <- [T(?x, 1usize, ?y), T(?y, 1usize, ?z)], 
+        T(?z, 0usize, ?y) <- [T(?x, 1usize, ?y), T(?z, 0usize, ?x)], 
+        T(?x, ?b, ?y) <- [T(?a, 2usize, ?b), T(?x, ?a, ?y)] 
     };
 
     // let program = program! {

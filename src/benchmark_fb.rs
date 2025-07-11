@@ -13,7 +13,7 @@ ascent! {
     relation tc(usize, usize);
 
     tc(x, y) <-- e(x, y);
-    tc(x, z) <-- e(x, y), tc(y, z);
+    tc(x, z) <-- tc(x, y), tc(y, z);
 }
 
 fn parse_edge(line: &str) -> Result<(usize, usize), Box<dyn std::error::Error>> {
@@ -39,10 +39,10 @@ fn run_micro_benchmark_facebook(
             runtime.insert("e", (from, to));
         }
         let query = match (query_source, query_target) {
-            (Some(src), Some(tgt)) => build_query!(T(src, tgt)),
-            (Some(src), None) => build_query!(T(src, _)),
-            (None, Some(tgt)) => build_query!(T(_, tgt)),
-            (None, None) => build_query!(T(_, _)),
+            (Some(src), Some(tgt)) => build_query!(tc(src, tgt)),
+            (Some(src), None) => build_query!(tc(src, _)),
+            (None, Some(tgt)) => build_query!(tc(_, tgt)),
+            (None, None) => build_query!(tc(_, _)),
         };
         let (results, evaluation_time): (Vec<Vec<TypedValue>>, Duration) =
             runtime.query_program(&query, program, &s);
@@ -52,10 +52,10 @@ fn run_micro_benchmark_facebook(
             runtime.insert("e", (from, to));
         }
         let query = match (query_source, query_target) {
-            (Some(src), Some(tgt)) => build_query!(T(src, tgt)),
-            (Some(src), None) => build_query!(T(src, _)),
-            (None, Some(tgt)) => build_query!(T(_, tgt)),
-            (None, None) => build_query!(T(_, _)),
+            (Some(src), Some(tgt)) => build_query!(tc(src, tgt)),
+            (Some(src), None) => build_query!(tc(src, _)),
+            (None, Some(tgt)) => build_query!(tc(_, tgt)),
+            (None, None) => build_query!(tc(_, _)),
         };
         let start = Instant::now();
         runtime.poll();
@@ -97,10 +97,10 @@ pub fn run_benchmarks_facebook(
     batch_size: usize,
     args: &Args,
 ) -> Result<Vec<BenchmarkResult>, Box<dyn Error>> {
+
     let program = program! {
         tc(?x, ?y) <- [e(?x, ?y)],
         tc(?x, ?z) <- [tc(?x, ?y), tc(?y, ?z)],
-        tc(0usize, ?z) <- [tc(0usize, ?y), tc(?y, ?z)],
     };
 
     let data = include_str!("../data/facebook_combined.txt");
@@ -121,8 +121,10 @@ pub fn run_benchmarks_facebook(
     let mut streaming_micro_magic = MicroRuntime::new(program.clone());
     let mut streaming_micro_tabling = MicroRuntime::new(program.clone());
     let mut ascent_runtime = AscentProgram::default();
-
-    for line_batch in &data_to_process.lines().chunks(batch_size) {
+    
+    let chunk_size = if args.bigchunky { data_to_process.len() } else { batch_size };
+    
+    for line_batch in &data_to_process.lines().chunks(chunk_size) {
         let batch: Vec<_> = line_batch
             .map(|line| parse_edge(line))
             .collect::<Result<Vec<_>, _>>()?;
@@ -145,8 +147,10 @@ pub fn run_benchmarks_facebook(
                 integral.len(),
                 time,
                 tuples,
-                result_tuples,
+                result_tuples.clone(),
             ));
+
+            println!("Micro-streaming tuples len: {:?}", result_tuples.len());
         }
 
         if args.micro_magic {
@@ -164,8 +168,9 @@ pub fn run_benchmarks_facebook(
                 integral.len(),
                 time,
                 tuples,
-                result_tuples,
+                result_tuples.clone(),
             ));
+            println!("Micro-magic tuples len: {:?}", result_tuples.len());
         }
 
         if args.micro_tabling {
@@ -183,8 +188,9 @@ pub fn run_benchmarks_facebook(
                 integral.len(),
                 time,
                 tuples,
-                result_tuples,
+                result_tuples.clone(),
             ));
+            println!("Micro-tabling tuples len: {:?}", result_tuples.len());
         }
 
         if args.ascent {
@@ -205,8 +211,10 @@ pub fn run_benchmarks_facebook(
                 integral.len(),
                 time,
                 tuples,
-                converted_result_tuples,
+                converted_result_tuples.clone(),
             ));
+
+            println!("Ascent tuples len: {:?}", converted_result_tuples.len());
         }
 
         // Print progress

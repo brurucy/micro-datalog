@@ -143,7 +143,7 @@ impl<'a> SubsumptiveEvaluator {
         // Cache results if we found any
         if !all_results.is_empty() {
             table.insert(
-                &atom.symbol,
+                &subquery_atom.symbol,
                 pattern.to_vec(),
                 all_results.iter().cloned().collect(),
             );

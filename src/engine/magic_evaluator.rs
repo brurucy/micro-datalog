@@ -28,20 +28,10 @@ impl<'a> MagicEvaluator {
     }
 
     pub fn evaluate_query<'b>(&self, query: &Query) -> (Vec<Vec<TypedValue>>, Duration) {
-        // Create adorned query symbol by combining original symbol with binding pattern
-        let pattern_string: String = query
-            .matchers
-            .iter()
-            .map(|matcher| match matcher {
-                Matcher::Constant(_) => 'b',
-                Matcher::Any => 'f',
-            })
-            .collect();
-
         // Apply magic transformation once
         let (magic_program, magic_seeds) = apply_magic_transformation(&self.program, query);
         //println!("Magic seeds: {:?}", magic_seeds);
-        
+        println!("Magic program: {:?}", magic_program);
         println!("Magic program: ====");
         for rule in &magic_program.inner {
             println!("{:?}", rule);
