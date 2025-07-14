@@ -33,15 +33,6 @@ const RANGE: &'static str = "<http://www.w3.org/2000/01/rdf-schema#range>";
 const PROPERTY: &'static str = "<http://www.w3.org/1999/02/22-rdf-syntax-ns#Property>";
 const PREFIX: &'static str = "http://www.lehigh.edu/~zhp2/2004/0401/univ-bench.owl#";
 
-fn save_parsed_data_to_file(parsed_data: &[(usize, usize, usize)], filename: &str) -> Result<(), Box<dyn Error>> {
-    let mut file = File::create(filename)?;
-    for &(s, p, o) in parsed_data {
-        writeln!(file, "{} {} {}", s, p, o)?;
-    }
-    println!("Parsed data saved to {}", filename);
-    Ok(())
-}
-
 fn save_benchmark_results_to_txt(results: &[Vec<TypedValue>], filename: &str) -> Result<(), Box<dyn Error>> {
     let mut file = File::create(filename)?;
     for result in results {
@@ -139,7 +130,7 @@ fn run_micro_benchmark_lubm1(
     }
 }
 
-pub fn run_benchmarks_lubm1lla(
+pub fn run_benchmarks_rdf(
     batch_size: usize,
     args: &Args,
 ) -> Result<Vec<BenchmarkResult>, Box<dyn Error>> {
@@ -199,6 +190,7 @@ pub fn run_benchmarks_lubm1lla(
                 .split_whitespace()
                 .map(|resource| resource.trim().to_string())
                 .collect();
+            println!("Triple: {:?}", triple);
             let s = rodeo.get_or_intern(&triple[0]).into_usize();
             let p = rodeo.get_or_intern(&triple[1]).into_usize();
             let o = rodeo.get_or_intern(&triple[2]).into_usize();
@@ -210,7 +202,7 @@ pub fn run_benchmarks_lubm1lla(
     // Save parsed data to file
     //save_parsed_data_to_file(&parsed_data, "parsed_lubm1_data.txt")?;
     
-    let chunk_size = if args.bigchunky { parsed_data.len() } else { batch_size };
+    let chunk_size = if args.no_batching { parsed_data.len() } else { batch_size };
 
     for line_batch in &parsed_data.iter().chunks(chunk_size) {
         let batch: Vec<_> = line_batch

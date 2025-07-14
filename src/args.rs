@@ -17,6 +17,10 @@ pub struct Args {
     #[arg(long)]
     pub use_all_data: bool,
 
+    /// Do not use batching
+    #[arg(long)]
+    pub no_batching: bool,
+
     /// Source node for the query
     #[arg(long)]
     pub query_source: Option<usize>,
@@ -28,6 +32,10 @@ pub struct Args {
     /// Middle node for the query
     #[arg(long)]
     pub query_middle: Option<usize>,
+
+    /// Query predicate
+    #[arg(long)]
+    pub query_predicate: String,
 
     /// Run micro streaming benchmark
     #[arg(long)]
@@ -65,15 +73,19 @@ pub struct Args {
     #[arg(long, default_value_t = 509000.0)]
     pub y_scale_tuples: f64,
 
-    /// Run lubm1lla benchmark
+    /// Run rdf benchmark
     #[arg(long)]
-    pub lubm1lla: bool,
+    pub rdf: bool,
 
-    /// Run facebook benchmark
+    /// Run tc benchmark
     #[arg(long)]
-    pub facebook: bool,
+    pub tc: bool,
 
-    /// Do not use batching for lubm1lla
+    /// Run university benchmark
     #[arg(long)]
-    pub bigchunky: bool,
+    pub university: bool,
+
+    /// Arity of the query
+    #[arg(long, default_value_t = 2)]
+    pub arity: usize,
 } 

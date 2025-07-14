@@ -1,24 +1,17 @@
 use ascent::ascent;
 use chrono::Local;
 use clap::Parser;
-use crepe::crepe;
-use datalog_rule_macro::program;
-use datalog_syntax::*;
-use itertools::*;
-use lasso::Key;
-use lasso::Rodeo;
 use micro_datalog::args::Args;
 use micro_datalog::benchmark::BenchmarkResult;
-use micro_datalog::benchmark_fb::run_benchmarks_facebook;
-use micro_datalog::benchmark_lubm1lla::run_benchmarks_lubm1lla;
-use micro_datalog::engine::datalog::{MicroRuntime, Strategy};
+use micro_datalog::benchmark_rdf::run_benchmarks_rdf;
+use micro_datalog::benchmark_tc::run_benchmarks_tc;
+use micro_datalog::benchmark_university::run_benchmarks_university;
 use micro_datalog::visualization::visualize_results;
 use std::error::Error;
 use std::fs::File;
 use std::io::{BufReader, BufWriter};
 use std::path::Path;
 use std::path::PathBuf;
-use std::time::{Duration, Instant};
 
 fn save_benchmark_results(results: &[BenchmarkResult], path: &Path) -> Result<(), Box<dyn Error>> {
     // Create results directory if it doesn't exist
@@ -81,7 +74,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     let mut results = Vec::new();
     let mut results_path: PathBuf = PathBuf::new();
 
-    if args.lubm1lla {
+    if args.rdf {
         match (args.query_source, args.query_middle, args.query_target) {
             (None, Some(middle), Some(tgt)) => {
                 res_path_string = format!("RDF(_, {}, {})_results_{}.json", middle, tgt, timestamp);
@@ -115,8 +108,8 @@ fn main() -> Result<(), Box<dyn Error>> {
         results_path = PathBuf::from(&res_path_string);
 
         //Run benchmarks and save results
-        results = run_benchmarks_lubm1lla(args.batch_size, &args)?;
-    } else if args.facebook {
+        results = run_benchmarks_rdf(args.batch_size, &args)?;
+    } else if args.tc {
         match (args.query_source, args.query_target) {
             (None, Some(tgt)) => {
                 res_path_string = format!("tc(_, {})_results_{}.json", tgt, timestamp);
@@ -132,7 +125,40 @@ fn main() -> Result<(), Box<dyn Error>> {
             }
         }
         results_path = PathBuf::from(&res_path_string);
-        results = run_benchmarks_facebook(args.batch_size, &args)?;
+        results = run_benchmarks_tc(args.batch_size, &args)?;
+    } else if args.university {
+        match (args.query_source, args.query_middle, args.query_target) {
+            (None, Some(middle), Some(tgt)) => {
+                res_path_string = format!("RDF(_, {}, {})_results_{}.json", middle, tgt, timestamp);
+            }
+            (Some(src), None, Some(tgt)) => {
+                res_path_string = format!("RDF({}, _, {})_results_{}.json", src, tgt, timestamp);
+            }
+
+            (None, Some(middle), None) => {
+                res_path_string = format!("RDF(_, {}, _)_results_{}.json", middle, timestamp);
+            }
+            (None, None, Some(tgt)) => {
+                res_path_string = format!("RDF(_, _, {})_results_{}.json", tgt, timestamp);
+            }
+            (Some(src), Some(middle), None) => {
+                res_path_string = format!("RDF({}, {}, _)_results_{}.json", src, middle, timestamp);
+            }
+            (Some(src), None, None) => {
+                res_path_string = format!("RDF({}, _, _)_results_{}.json", src, timestamp);
+            }
+            (Some(src), Some(middle), Some(tgt)) => {
+                res_path_string = format!(
+                    "RDF({}, {}, {})_results_{}.json",
+                    src, middle, tgt, timestamp
+                );
+            }
+            (None, None, None) => {
+                res_path_string = format!("RDF(_, _, _)_results_{}.json", timestamp);
+            }
+        }
+        results_path = PathBuf::from(&res_path_string);
+        results = run_benchmarks_university(&args)?;
     }
 
     save_benchmark_results(&results, &results_path)?;

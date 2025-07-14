@@ -92,8 +92,8 @@ impl MicroRuntime {
         program: Program,
         strategy: &Strategy,
     ) -> (Vec<Vec<TypedValue>>, Duration) {
-        println!("Query: {:?}, {:?}", query.symbol, query.matchers);
-        println!("Program: {:?}", program.inner);
+        //println!("Query: {:?}, {:?}", query.symbol, query.matchers);
+        //println!("Program: {:?}", program.inner);
         match strategy {
             Strategy::BottomUp => {
                 let evaluator = MagicEvaluator::new(

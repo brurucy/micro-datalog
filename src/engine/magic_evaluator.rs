@@ -30,8 +30,8 @@ impl<'a> MagicEvaluator {
     pub fn evaluate_query<'b>(&self, query: &Query) -> (Vec<Vec<TypedValue>>, Duration) {
         // Apply magic transformation once
         let (magic_program, magic_seeds) = apply_magic_transformation(&self.program, query);
-        //println!("Magic seeds: {:?}", magic_seeds);
-        println!("Magic program: {:?}", magic_program);
+        println!("Magic seeds: {:?}", magic_seeds);
+
         println!("Magic program: ====");
         for rule in &magic_program.inner {
             println!("{:?}", rule);

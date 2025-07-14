@@ -93,7 +93,7 @@ fn run_ascent_benchmark_facebook(
     (elapsed_time, results.len(), results)
 }
 
-pub fn run_benchmarks_facebook(
+pub fn run_benchmarks_tc(
     batch_size: usize,
     args: &Args,
 ) -> Result<Vec<BenchmarkResult>, Box<dyn Error>> {
@@ -122,7 +122,7 @@ pub fn run_benchmarks_facebook(
     let mut streaming_micro_tabling = MicroRuntime::new(program.clone());
     let mut ascent_runtime = AscentProgram::default();
     
-    let chunk_size = if args.bigchunky { data_to_process.len() } else { batch_size };
+    let chunk_size = if args.no_batching { data_to_process.len() } else { batch_size };
     
     for line_batch in &data_to_process.lines().chunks(chunk_size) {
         let batch: Vec<_> = line_batch

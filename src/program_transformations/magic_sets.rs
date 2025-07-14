@@ -15,12 +15,6 @@ use std::collections::HashSet;
 /// # Returns
 /// A new program with magic sets transformation applied
 pub fn apply_magic_transformation(program: &Program, query: &Query) -> (Program, HashSet<Atom>) {
-    println!("Program: {:?}", program);
-    println!("Program: ====");
-    for rule in &program.inner {
-        println!("{:?}", rule);
-    }
-
     let mut transformed_rules = Vec::with_capacity(program.inner.len() * 2); // = magic rules + modified rules
     let mut processed_adorned_preds = HashSet::new();
     let mut seen_rules = HashSet::new();
@@ -226,7 +220,7 @@ pub fn apply_magic_transformation(program: &Program, query: &Query) -> (Program,
     //     magic_T_fbb(4, ?x) <- [magic_T_bbb(?z, 0, ?x)],
     //     magic_T_fbb(4, ?x) <- [magic_T_fbb(0, ?x)],
     // };
-    println!("Transformed rules: {:?}", transformed_rules);
+    //println!("Transformed rules: {:?}", transformed_rules);
     (Program::from(transformed_rules), magic_seeds)
 }
 
