@@ -4,6 +4,7 @@ use crate::engine::storage::RelationStorage;
 use crate::evaluation::query::pattern_match;
 use crate::evaluation::semi_naive::semi_naive_evaluation;
 use crate::helpers::helpers::split_program;
+use common::helpers::{canonicalize_rule, clean_rule};
 use crate::program_transformations::dependency_graph::sort_program;
 
 use datalog_syntax::*;
@@ -124,10 +125,10 @@ impl MicroRuntime {
 
         let mut relations = IndexSet::new();
 
-        program.inner.iter().for_each(|rule| {
-            relations.insert(&rule.head.symbol);
+        program.inner.iter().map(|rule| clean_rule(rule)).map(|rule| canonicalize_rule(&rule)).for_each(|rule| {
+            relations.insert(rule.head.symbol);
             rule.body.iter().for_each(|body_atom| {
-                relations.insert(&body_atom.symbol);
+                relations.insert(body_atom.symbol.clone());
             })
         });
 

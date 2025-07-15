@@ -1,5 +1,86 @@
-use std::fmt::{Debug, Formatter};
-use serde::{Serialize, Deserialize};
+use itertools::Itertools;
+use serde::{Deserialize, Serialize};
+use std::{collections::{HashMap, HashSet}, fmt::{Debug, Formatter}};
+
+pub fn clean_rule(rule: &Rule) -> Rule {
+    let mut clean_rule = rule.clone();
+    let head_atom_terms: HashSet<_> = rule.head.terms.clone().into_iter().collect();
+    let body_atoms: Vec<_> = rule.body.iter().enumerate().collect();
+    let body_atom_terms: HashMap<_, _> = rule
+        .body
+        .iter()
+        .map(|atom| (atom, atom.terms.clone().into_iter().collect::<HashSet<_>>()))
+        .collect();
+
+    body_atoms.iter().for_each(|(position, atom)| {
+        let terms = body_atom_terms.get(atom).unwrap();
+        if terms.intersection(&head_atom_terms).collect_vec().len() == 0 {
+            clean_rule.body.remove(*position);
+        }
+    });
+
+    clean_rule
+}
+
+pub fn canonicalize_rule(rule: &Rule) -> Rule {
+    if rule.body.is_empty() {
+        return rule.clone();
+    }
+
+    let mut ordered_atoms = Vec::new();
+    let mut remaining_atoms = rule.body.clone();
+    let mut available_variables = HashSet::new();
+
+    fn get_variables(atom: &Atom) -> HashSet<String> {
+        atom.terms
+            .iter()
+            .filter_map(|term| match term {
+                Term::Variable(var) => Some(var.clone()),
+                Term::Constant(_) => None,
+            })
+            .collect()
+    }
+
+    if let Some(first_atom) = remaining_atoms.first() {
+        let first_vars = get_variables(first_atom);
+        available_variables.extend(first_vars);
+        ordered_atoms.push(first_atom.clone());
+        remaining_atoms.remove(0);
+    }
+
+    while !remaining_atoms.is_empty() {
+        let mut best_atom_idx = None;
+        let mut best_score = 0;
+
+        for (idx, atom) in remaining_atoms.iter().enumerate() {
+            let atom_vars = get_variables(atom);
+            let shared_vars = atom_vars.intersection(&available_variables).count();
+
+            if shared_vars > best_score {
+                best_score = shared_vars;
+                best_atom_idx = Some(idx);
+            }
+        }
+
+        if let Some(idx) = best_atom_idx {
+            let atom = remaining_atoms.remove(idx);
+            let atom_vars = get_variables(&atom);
+            available_variables.extend(atom_vars);
+            ordered_atoms.push(atom);
+        } else {
+            let atom = remaining_atoms.remove(0);
+            let atom_vars = get_variables(&atom);
+            available_variables.extend(atom_vars);
+            ordered_atoms.push(atom);
+        }
+    }
+
+    Rule {
+        head: rule.head.clone(),
+        body: ordered_atoms,
+        id: rule.id,
+    }
+}
 
 #[derive(Eq, Ord, PartialEq, PartialOrd, Clone, Hash, Serialize, Deserialize)]
 pub enum TypedValue {
@@ -46,7 +127,7 @@ impl Into<usize> for TypedValue {
     fn into(self) -> usize {
         match self {
             TypedValue::Int(x) => x,
-            _ => unreachable!()
+            _ => unreachable!(),
         }
     }
 }
@@ -55,7 +136,7 @@ impl Into<bool> for TypedValue {
     fn into(self) -> bool {
         match self {
             TypedValue::Bool(x) => x,
-            _ => unreachable!()
+            _ => unreachable!(),
         }
     }
 }
@@ -64,7 +145,7 @@ impl Into<String> for TypedValue {
     fn into(self) -> String {
         match self {
             TypedValue::Str(x) => x,
-            _ => unreachable!()
+            _ => unreachable!(),
         }
     }
 }
@@ -128,7 +209,12 @@ where
     U: Into<TypedValue>,
 {
     fn from(value: (T, R, S, U)) -> Self {
-        Fact(vec![value.0.into(), value.1.into(), value.2.into(), value.3.into()])
+        Fact(vec![
+            value.0.into(),
+            value.1.into(),
+            value.2.into(),
+            value.3.into(),
+        ])
     }
 }
 
@@ -141,7 +227,13 @@ where
     V: Into<TypedValue>,
 {
     fn from(value: (T, R, S, U, V)) -> Self {
-        Fact(vec![value.0.into(), value.1.into(), value.2.into(), value.3.into(), value.4.into()])
+        Fact(vec![
+            value.0.into(),
+            value.1.into(),
+            value.2.into(),
+            value.3.into(),
+            value.4.into(),
+        ])
     }
 }
 
@@ -155,7 +247,14 @@ where
     W: Into<TypedValue>,
 {
     fn from(value: (T, R, S, U, V, W)) -> Self {
-        Fact(vec![value.0.into(), value.1.into(), value.2.into(), value.3.into(), value.4.into(), value.5.into()])
+        Fact(vec![
+            value.0.into(),
+            value.1.into(),
+            value.2.into(),
+            value.3.into(),
+            value.4.into(),
+            value.5.into(),
+        ])
     }
 }
 
@@ -170,7 +269,15 @@ where
     X: Into<TypedValue>,
 {
     fn from(value: (T, R, S, U, V, W, X)) -> Self {
-        Fact(vec![value.0.into(), value.1.into(), value.2.into(), value.3.into(), value.4.into(), value.5.into(), value.6.into()])
+        Fact(vec![
+            value.0.into(),
+            value.1.into(),
+            value.2.into(),
+            value.3.into(),
+            value.4.into(),
+            value.5.into(),
+            value.6.into(),
+        ])
     }
 }
 
@@ -186,7 +293,16 @@ where
     Y: Into<TypedValue>,
 {
     fn from(value: (T, R, S, U, V, W, X, Y)) -> Self {
-        Fact(vec![value.0.into(), value.1.into(), value.2.into(), value.3.into(), value.4.into(), value.5.into(), value.6.into(), value.7.into()])
+        Fact(vec![
+            value.0.into(),
+            value.1.into(),
+            value.2.into(),
+            value.3.into(),
+            value.4.into(),
+            value.5.into(),
+            value.6.into(),
+            value.7.into(),
+        ])
     }
 }
 
@@ -198,7 +314,6 @@ where
         Fact(value.into_iter().map(|x| x.into()).collect())
     }
 }
-
 
 #[derive(Ord, PartialOrd, Eq, PartialEq, Clone, Hash)]
 pub struct Atom {
@@ -223,13 +338,13 @@ impl Debug for Atom {
     }
 }
 
-#[derive(Clone, Debug)] 
+#[derive(Clone, Debug)]
 pub enum Matcher {
     Any,
     Constant(TypedValue),
 }
 
-#[derive(Clone)] 
+#[derive(Clone)]
 pub struct Query<'a> {
     pub matchers: Vec<Matcher>,
     pub symbol: &'a str,
@@ -308,7 +423,11 @@ pub struct Program {
 
 impl From<Vec<Rule>> for Program {
     fn from(value: Vec<Rule>) -> Self {
-        let mut val = value;
+        let mut val: Vec<Rule> = value
+            .into_iter()
+            .map(|rule| clean_rule(&rule))
+            .map(|rule| canonicalize_rule(&rule))
+            .collect();
         val.sort();
         // Questionable, I know :)
         for (id, rule) in val.iter_mut().enumerate() {
@@ -330,12 +449,12 @@ macro_rules! impl_fact_tuple {
                 Ok((
                     match &self.0[0] {
                         TypedValue::Str(s) => s.as_str(),
-                        _ => return Err("Value at position 0 must be a string".to_string())
+                        _ => return Err("Value at position 0 must be a string".to_string()),
                     },
                     match &self.0[1] {
                         TypedValue::Str(s) => s.as_str(),
-                        _ => return Err("Value at position 1 must be a string".to_string())
-                    }
+                        _ => return Err("Value at position 1 must be a string".to_string()),
+                    },
                 ))
             }
         }
@@ -350,16 +469,16 @@ macro_rules! impl_fact_tuple {
                 Ok((
                     match &self.0[0] {
                         TypedValue::Str(s) => s.as_str(),
-                        _ => return Err("Value at position 0 must be a string".to_string())
+                        _ => return Err("Value at position 0 must be a string".to_string()),
                     },
                     match &self.0[1] {
                         TypedValue::Str(s) => s.as_str(),
-                        _ => return Err("Value at position 1 must be a string".to_string())
+                        _ => return Err("Value at position 1 must be a string".to_string()),
                     },
                     match &self.0[2] {
                         TypedValue::Str(s) => s.as_str(),
-                        _ => return Err("Value at position 2 must be a string".to_string())
-                    }
+                        _ => return Err("Value at position 2 must be a string".to_string()),
+                    },
                 ))
             }
         }

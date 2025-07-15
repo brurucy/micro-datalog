@@ -25,6 +25,14 @@ pub struct Args {
     #[arg(long)]
     pub query_source: Option<usize>,
 
+    /// Source node for the query
+    #[arg(long)]
+    pub query_source_str: Option<String>,
+
+    /// Target node for the query
+    #[arg(long)]
+    pub query_target_str: Option<String>,
+
     /// Target node for the query
     #[arg(long)]
     pub query_target: Option<usize>,

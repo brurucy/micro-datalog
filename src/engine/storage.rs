@@ -19,6 +19,10 @@ impl RelationStorage {
         return self.inner.get(relation_symbol);
     }
 
+    pub fn get_all_relations(&self) -> Vec<String> {
+        self.inner.keys().cloned().collect()
+    }
+
     /// Retrieves all edges from the graph stored in RelationStorage
     pub fn get_all_edges(&self, node: String) -> Vec<(String, String)> {
         let edges = &self.get_relation(&node);

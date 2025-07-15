@@ -8,3 +8,4 @@ edition = "2021"
 [dependencies]
 datalog-syntax = { path = "../datalog-syntax" }
 petgraph = "0.6.4"
+itertools = "0.14.0"

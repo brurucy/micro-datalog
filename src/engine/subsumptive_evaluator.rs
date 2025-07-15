@@ -27,8 +27,8 @@ impl<'a> SubsumptiveEvaluator {
     }
 
     pub fn evaluate_query<'b>(&self, query: &'b Query) -> (Vec<Vec<TypedValue>>, Duration) {
-        println!("Evaluating query: {:?}, {:?}", query.symbol, query.matchers);
-        println!("Program: {:?}", self.program.inner);
+        //!("Evaluating query: {:?}, {:?}", query.symbol, query.matchers);
+        //println!("Program: {:?}", self.program.inner);
         let mut table = SubsumptiveTable::new();
         let mut seen_queries = HashSet::new();
 
@@ -80,7 +80,7 @@ impl<'a> SubsumptiveEvaluator {
         seen_queries: &mut HashSet<(String, Vec<Option<TypedValue>>)>,
         depth: usize,
     ) -> Vec<Vec<TypedValue>> {
-        println!("Evaluating subquery: {:?}, {:?}", subquery_atom.symbol, pattern);
+        //println!("Evaluating subquery: {:?}, {:?}", subquery_atom.symbol, pattern);
         let mut all_results = HashSet::new();
         let query_key = (subquery_atom.symbol.clone(), pattern.to_vec());
 
@@ -113,12 +113,36 @@ impl<'a> SubsumptiveEvaluator {
             all_results.extend(matching_facts);
         }
 
-        // Make owned copies of matching rules to avoid borrow checker issues
+
         let matching_rules: Vec<Rule> = self
             .program
             .inner
             .iter()
-            .filter(|rule| rule.head.symbol == subquery_atom.symbol)
+            .filter(|rule| {
+                // Check if symbol matches
+                if rule.head.symbol != subquery_atom.symbol {
+                    return false;
+                }
+                
+                // Check if terms are compatible
+                if rule.head.terms.len() != subquery_atom.terms.len() {
+                    return false;
+                }
+                
+                // Check each term for compatibility
+                rule.head.terms.iter().zip(subquery_atom.terms.iter()).all(|(rule_term, subquery_term)| {
+                    match (rule_term, subquery_term) {
+                        // If rule has a constant, subquery must have the same constant
+                        (Term::Constant(rule_val), Term::Constant(subquery_val)) => {
+                            rule_val == subquery_val
+                        }
+                        // If rule has a variable, subquery can have anything
+                        (Term::Variable(_), _) => true,
+                        // If subquery has a variable, rule can have anything
+                        (_, Term::Variable(_)) => true,
+                    }
+                })
+            })
             .cloned()
             .collect();
 
@@ -133,7 +157,7 @@ impl<'a> SubsumptiveEvaluator {
                 &mut rule_results,
                 depth + 1,
             );
-            println!("Rule {:?} results: {:?}", rule, rule_results);
+            //println!("Rule {:?} results: {:?}", rule, rule_results);
             all_results.extend(rule_results);
         }
 
@@ -161,7 +185,7 @@ impl<'a> SubsumptiveEvaluator {
         results: &mut HashSet<AnonymousGroundAtom>,
         depth: usize,
     ) -> () {
-        println!("Evaluating rule: {:?}, {:?}", rule.head.symbol, head_pattern);
+        //println!("Evaluating rule: {:?}, {:?}", rule.head.symbol, head_pattern);
 
         // Create a variable binding map to track bound variables
         let mut bindings = HashMap::new();
@@ -174,6 +198,20 @@ impl<'a> SubsumptiveEvaluator {
                 bindings.insert(var.clone(), val.clone());
             }
         }
+
+        // TODO
+        // rule.head.terms.iter().zip(subquery_atom.terms.iter()).all(|(rule_term, subquery_term)| {
+        //     match (rule_term, subquery_term) {
+        //         // If rule has a constant, subquery must have the same constant
+        //         (Term::Constant(rule_val), Term::Constant(subquery_val)) => {
+        //             rule_val == subquery_val
+        //         }
+        //         // If rule has a variable, subquery can have anything
+        //         (Term::Variable(_), _) => true,
+        //         // If subquery has a variable, rule can have anything
+        //         (_, Term::Variable(_)) => true,
+        //     }
+        // });
 
         // Evaluate each body atom in sequence
         let result = self.evaluate_body(
@@ -202,14 +240,12 @@ impl<'a> SubsumptiveEvaluator {
         depth: usize,
     ) -> () {
         //println!("Evaluating body: {:?}, {:?}", body, head);
-        let indent = "  ".repeat(depth);
-
         // Base case: all body atoms have been processed
         if pos >= body.len() {
             if let Some(result) = create_result(head, bindings) {
                 results.insert(result);
             }
-            return; // Exit here
+            return;
         }
 
         let atom = &body[pos];
