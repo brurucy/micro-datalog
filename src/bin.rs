@@ -6,6 +6,7 @@ use micro_datalog::benchmark::BenchmarkResult;
 use micro_datalog::benchmark_rdf::run_benchmarks_rdf;
 use micro_datalog::benchmark_tc::run_benchmarks_tc;
 use micro_datalog::benchmark_university::run_benchmarks_university;
+use micro_datalog::benchmark_university_all::run_benchmarks_university_all;
 use micro_datalog::visualization::visualize_results;
 use std::error::Error;
 use std::fs::File;
@@ -159,6 +160,12 @@ fn main() -> Result<(), Box<dyn Error>> {
         }
         results_path = PathBuf::from(&res_path_string);
         results = run_benchmarks_university(&args)?;
+    } else if args.university_all {
+       
+        res_path_string = format!("Uni T(_, _, _)_results_{}.json", timestamp);
+        
+        results_path = PathBuf::from(&res_path_string);
+        results = run_benchmarks_university_all(&args)?;
     }
 
     save_benchmark_results(&results, &results_path)?;

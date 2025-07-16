@@ -28,15 +28,14 @@ impl<'a> MagicEvaluator {
     }
 
     pub fn evaluate_query<'b>(&self, query: &Query) -> (Vec<Vec<TypedValue>>, Duration) {
+        //println!("Query: {:?}", query.symbol);
+        //println!("Query: {:?}", query.matchers);
         // Apply magic transformation once
         let (magic_program, magic_seeds) = apply_magic_transformation(&self.program, query);
-        println!("Magic seeds: {:?}", magic_seeds);
+        //println!("Magic seeds: {:?}", magic_seeds);
 
-        println!("Magic program: ====");
-        for rule in &magic_program.inner {
-            println!("{:?}", rule);
-        }
-
+        //println!("Magic program: ====");
+     
         // Create runtime with the transformed program
         let mut runtime = MicroRuntime::new(magic_program.clone());
 
@@ -137,7 +136,8 @@ impl<'a> MagicEvaluator {
         let evaluation_time = start.elapsed();
 
         let mut results = HashSet::new();
-        let queries = get_queries_with_all_binding_patterns(query, &magic_program);
+        let mut queries = get_queries_with_all_binding_patterns(query, &magic_program);
+        queries.push(query.clone());
         for query_i in queries {
             let results_i: Vec<Vec<TypedValue>> = runtime
                 .processed

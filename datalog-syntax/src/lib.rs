@@ -12,10 +12,31 @@ pub fn clean_rule(rule: &Rule) -> Rule {
         .map(|atom| (atom, atom.terms.clone().into_iter().collect::<HashSet<_>>()))
         .collect();
 
+    let confirmed_non_useless_atoms = body_atoms.iter().filter(|(position, atom)| {
+        let terms = body_atom_terms.get(atom).unwrap();
+        if terms.intersection(&head_atom_terms).collect_vec().len() != 0 {
+            true
+        } else {
+            false
+        }
+    }).collect_vec();
+
     body_atoms.iter().for_each(|(position, atom)| {
         let terms = body_atom_terms.get(atom).unwrap();
-        if terms.intersection(&head_atom_terms).collect_vec().len() == 0 {
-            clean_rule.body.remove(*position);
+        if !confirmed_non_useless_atoms.contains(&&(*position, atom)) {
+            let mut any_intersection = false;
+
+            for non_useless_atom in confirmed_non_useless_atoms.iter() {
+                let non_useless_atom_terms = body_atom_terms.get(non_useless_atom.1).unwrap();
+                if non_useless_atom_terms.intersection(&terms).collect_vec().len() != 0 {
+                    any_intersection = true;
+                    break;
+                }
+            }
+
+            if !any_intersection {  
+                clean_rule.body.remove(*position);
+            }
         }
     });
 

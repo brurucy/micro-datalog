@@ -8,3 +8,4 @@ pub mod visualization;
 pub mod benchmark_rdf;
 pub mod benchmark_tc;   
 pub mod benchmark_university;
+pub mod benchmark_university_all;

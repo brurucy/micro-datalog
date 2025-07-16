@@ -160,6 +160,43 @@ ascent! {
     relation researchAssistant_ground(String, String);
     relation undergraduateStudent(String, String);
     relation undergraduateStudent_ground(String, String);
+    relation T(String, String, String);
+
+    T("headOf".to_string(), x, y) <-- headOf(x, y);
+    T("Person".to_string(), x, "Empty".to_string()) <-- Person(x);
+    T("member".to_string(), x, y) <-- member(x, y);
+    T("memberOf".to_string(), x, y) <-- memberOf(x, y);
+    T("worksFor".to_string(), x, y) <-- worksFor(x, y);
+    T("University".to_string(), x, "Empty".to_string()) <-- University(x);
+    T("degreeFrom".to_string(), x, y) <-- degreeFrom(x, y);
+    T("hasAlumnus".to_string(), x, y) <-- hasAlumnus(x, y);
+    T("Employee".to_string(), x, "Empty".to_string()) <-- Employee(x);
+    T("Faculty".to_string(), x, "Empty".to_string()) <-- Faculty(x);
+    T("Course".to_string(), x, "Empty".to_string()) <-- Course(x);
+    T("Professor".to_string(), x, "Empty".to_string()) <-- Professor(x);
+    T("Organization".to_string(), x, "Empty".to_string()) <-- Organization(x);
+    T("Article".to_string(), x, "Empty".to_string()) <-- Article(x);
+    T("Publication".to_string(), x, "Empty".to_string()) <-- Publication(x);
+    T("AdministrativeStaff".to_string(), x, "Empty".to_string()) <-- AdministrativeStaff(x);
+    T("Software".to_string(), x, "Empty".to_string()) <-- Software(x);
+    T("TeachingAssistant".to_string(), x, "Empty".to_string()) <-- TeachingAssistant(x);
+    T("Chair".to_string(), x, "Empty".to_string()) <-- Chair(x);
+    T("Director".to_string(), x, "Empty".to_string()) <-- Director(x);
+    T("PostDoc".to_string(), x, "Empty".to_string()) <-- PostDoc(x);
+    T("SystemsStaff".to_string(), x, "Empty".to_string()) <-- SystemsStaff(x);
+    T("TechnicalReport".to_string(), x, "Empty".to_string()) <-- TechnicalReport(x);
+    T("JournalArticle".to_string(), x, "Empty".to_string()) <-- JournalArticle(x);
+    T("AssistantProfessor".to_string(), x, "Empty".to_string()) <-- AssistantProfessor(x);
+    T("Student".to_string(), x, "Empty".to_string()) <-- Student(x);
+    T("UndergraduateStudent".to_string(), x, "Empty".to_string()) <-- UndergraduateStudent(x);
+    T("ResearchAssistant".to_string(), x, "Empty".to_string()) <-- ResearchAssistant(x);
+    T("ResearchGroup".to_string(), x, "Empty".to_string()) <-- ResearchGroup(x);
+    T("Research".to_string(), x, "Empty".to_string()) <-- Research(x);
+    T("Work".to_string(), x, "Empty".to_string()) <-- Work(x);
+    T("Software".to_string(), x, "Empty".to_string()) <-- Software(x);
+    T("Schedule".to_string(), x, "Empty".to_string()) <-- Schedule(x);
+    T("Dean".to_string(), x, "Empty".to_string()) <-- Dean(x);
+    T("subOrganizationOf".to_string(), x, y) <-- subOrganizationOf(x,y);
 
     AdministrativeStaff(x) <-- AdministrativeStaff_ground(x);
     Article(x) <-- Article_ground(x);
@@ -334,12 +371,12 @@ ascent! {
 }
 
 fn save_parsed_data_to_file(
-    parsed_data: &Vec<(String, String)>,
+    parsed_data: &Vec<(String, String, String)>,
     filename: &str,
 ) -> Result<(), Box<dyn Error>> {
     let mut file = File::create(filename)?;
-    for (s, p) in parsed_data {
-        writeln!(file, "{} {}", s, p)?;
+    for (s, p, o) in parsed_data {
+        writeln!(file, "{} {} {}", s, p, o)?;
     }
     println!("Parsed data saved to {}", filename);
     Ok(())
@@ -349,7 +386,7 @@ fn run_ascent_benchmark(
     runtime: &mut AscentProgram,
     edges: &[(String, String, String)],
     query_source_str: Option<String>,
-) -> (Duration, usize, Vec<(String, String)>) {
+) -> (Duration, usize, Vec<(String, String, String)>) {
     for (pred, x, y) in edges {
         match pred.as_str() {
             "affiliateOf" => {
@@ -401,7 +438,9 @@ fn run_ascent_benchmark(
                 runtime.advisor_ground.push((x.into(), y.into()));
             }
             "affiliatedOrganizationOf" => {
-                runtime.affiliatedOrganizationOf_ground.push((x.into(), y.into()));
+                runtime
+                    .affiliatedOrganizationOf_ground
+                    .push((x.into(), y.into()));
             }
             "age" => {
                 runtime.age_ground.push((x.into(), y.into()));
@@ -431,13 +470,17 @@ fn run_ascent_benchmark(
                 runtime.publicationDate_ground.push((x.into(), y.into()));
             }
             "publicationResearch" => {
-                runtime.publicationResearch_ground.push((x.into(), y.into()));
+                runtime
+                    .publicationResearch_ground
+                    .push((x.into(), y.into()));
             }
             "researchProject" => {
                 runtime.researchProject_ground.push((x.into(), y.into()));
             }
             "softwareDocumentation" => {
-                runtime.softwareDocumentation_ground.push((x.into(), y.into()));
+                runtime
+                    .softwareDocumentation_ground
+                    .push((x.into(), y.into()));
             }
             "softwareVersion" => {
                 runtime.softwareVersion_ground.push((x.into(), y.into()));
@@ -449,13 +492,17 @@ fn run_ascent_benchmark(
                 runtime.ResearchAssistant_ground.push((x.into(),));
             }
             "teachingAssistantOf" => {
-                runtime.teachingAssistantOf_ground.push((x.into(), y.into()));
+                runtime
+                    .teachingAssistantOf_ground
+                    .push((x.into(), y.into()));
             }
             "subOrganizationOf" => {
                 runtime.subOrganizationOf_ground.push((x.into(), y.into()));
             }
             "undergraduateDegreeFrom" => {
-                runtime.undergraduateDegreeFrom_ground.push((x.into(), y.into()));
+                runtime
+                    .undergraduateDegreeFrom_ground
+                    .push((x.into(), y.into()));
             }
             "worksFor" => {
                 runtime.worksFor_ground.push((x.into(), y.into()));
@@ -500,7 +547,7 @@ fn run_ascent_benchmark(
     let elapsed_time = start.elapsed();
     // Query tuples based on source and target
     let results: Vec<_> = runtime
-        .member
+        .T
         .iter()
         .cloned()
         // .filter(
@@ -515,12 +562,14 @@ fn run_ascent_benchmark(
         //         (None, None, None) => true,
         //     },
         // )
-        .filter(|(x, _ )| x.as_str() == query_source_str.as_ref().unwrap())
+        //.filter(|(x, _ )| x.as_str() == query_source_str.as_ref().unwrap())
         .collect();
     (elapsed_time, results.len(), results)
 }
 
-
+fn add_ground_suffix(relation: &str) -> String {
+    format!("{}_ground", relation)
+}
 fn run_micro_benchmark(
     runtime: &mut MicroRuntime,
     edges: &Vec<(String, String, String)>,
@@ -530,9 +579,9 @@ fn run_micro_benchmark(
 ) -> (Duration, usize, Vec<Vec<TypedValue>>) {
     for (first, second, third) in edges.clone() {
         if third.is_empty() {
-            runtime.insert(&format!("{}_ground", first), (second,));
+            runtime.insert(&add_ground_suffix(&first), (second,));
         } else {
-            runtime.insert(&format!("{}_ground", first), (second, third));
+            runtime.insert(&add_ground_suffix(&first), (second, third));
         }
         //println!("runtime: {:?}", runtime.unprocessed_insertions.get_all_relations());
     }
@@ -550,7 +599,7 @@ fn run_micro_benchmark(
     }
 }
 
-pub fn run_benchmarks_university(args: &Args) -> Result<Vec<BenchmarkResult>, Box<dyn Error>> {
+pub fn run_benchmarks_university_all(args: &Args) -> Result<Vec<BenchmarkResult>, Box<dyn Error>> {
     // ==== Parse data ====
     let data = include_str!("../data/lubm1.nt");
     let mut parsed_data = Vec::new();
@@ -567,6 +616,42 @@ pub fn run_benchmarks_university(args: &Args) -> Result<Vec<BenchmarkResult>, Bo
 
     // ==== Program ====
     let program = program! {
+        T("headOf", ?x, ?y) <- [headOf(?x, ?y)],
+        T("Person", ?x, "Empty") <- [Person(?x)],
+        T("member", ?x, ?y) <- [member(?x, ?y)],
+        T("memberOf", ?x, ?y) <- [memberOf(?x, ?y)],
+        T("worksFor", ?x, ?y) <- [worksFor(?x, ?y)],
+        T("University", ?x, "Empty") <- [University(?x)],
+        T("degreeFrom", ?x, ?y) <- [degreeFrom(?x, ?y)],
+        T("hasAlumnus", ?x, ?y) <- [hasAlumnus(?x, ?y)],
+        T("Employee", ?x, "Empty") <- [Employee(?x)],
+        T("Faculty", ?x, "Empty") <- [Faculty(?x)],
+        T("Course", ?x, "Empty") <- [Course(?x)],
+        T("Professor", ?x, "Empty") <- [Professor(?x)],
+        T("Organization", ?x, "Empty") <- [Organization(?x)],
+        T("Article", ?x, "Empty") <- [Article(?x)],
+        T("Publication", ?x, "Empty") <- [Publication(?x)],
+        T("AdministrativeStaff", ?x, "Empty") <- [AdministrativeStaff(?x)],
+        T("Software", ?x, "Empty") <- [Software(?x)],
+        T("TeachingAssistant", ?x, "Empty") <- [TeachingAssistant(?x)],
+        T("Chair", ?x, "Empty") <- [Chair(?x)],
+        T("Director", ?x, "Empty") <- [Director(?x)],
+        T("PostDoc", ?x, "Empty") <- [PostDoc(?x)],
+        T("SystemsStaff", ?x, "Empty") <- [SystemsStaff(?x)],
+        T("TechnicalReport", ?x, "Empty") <- [TechnicalReport(?x)],
+        T("JournalArticle", ?x, "Empty") <- [JournalArticle(?x)],
+        T("AssistantProfessor", ?x, "Empty") <- [AssistantProfessor(?x)],
+        T("Student", ?x, "Empty") <- [Student(?x)],
+        T("UndergraduateStudent", ?x, "Empty") <- [UndergraduateStudent(?x)],
+        T("ResearchAssistant", ?x, "Empty") <- [ResearchAssistant(?x)],
+        T("ResearchGroup", ?x, "Empty") <- [ResearchGroup(?x)],
+        T("Research", ?x, "Empty") <- [Research(?x)],
+        T("Work", ?x, "Empty") <- [Work(?x)],
+        T("Software", ?x, "Empty") <- [Software(?x)],
+        T("Schedule", ?x, "Empty") <- [Schedule(?x)],
+        T("Dean", ?x, "Empty") <- [Dean(?x)],
+        T("subOrganizationOf", ?x, ?y) <- [subOrganizationOf(?x,?y)],
+
         AdministrativeStaff(?x) <- [AdministrativeStaff_ground(?x)],
         Article(?x) <- [Article_ground(?x)],
         AssistantProfessor(?x) <- [AssistantProfessor_ground(?x)],
@@ -742,42 +827,45 @@ pub fn run_benchmarks_university(args: &Args) -> Result<Vec<BenchmarkResult>, Bo
     // ==== End program ====
 
     // ==== Query ====
-    let matchers = match (args.query_source_str.clone(), args.query_target_str.clone()) {
-        (Some(src), Some(tgt)) => vec![
-            Matcher::Constant(TypedValue::from(src)),
-            Matcher::Constant(TypedValue::from(tgt)),
-        ],
-        (Some(src), None) => {
-            if args.arity == 1 {
-                vec![Matcher::Constant(TypedValue::from(src))]
-            } else {
-                vec![Matcher::Constant(TypedValue::from(src)), Matcher::Any]
-            }
-        }
-        (None, Some(tgt)) => {
-            if args.arity == 1 {
-                vec![Matcher::Constant(TypedValue::from(tgt))]
-            } else {
-                vec![Matcher::Any, Matcher::Constant(TypedValue::from(tgt))]
-            }
-        }
-        (None, None) => {
-            if args.arity == 1 {
-                vec![Matcher::Any]
-            } else {
-                vec![Matcher::Any, Matcher::Any]
-            }
-        }
-    };
+    // let matchers = match (args.query_source_str.clone(), args.query_target_str.clone()) {
+    //     (Some(src), Some(tgt)) => vec![
+    //         Matcher::Constant(TypedValue::from(src)),
+    //         Matcher::Constant(TypedValue::from(tgt)),
+    //     ],
+    //     (Some(src), None) => {
+    //         if args.arity == 1 {
+    //             vec![Matcher::Constant(TypedValue::from(src))]
+    //         } else {
+    //             vec![Matcher::Constant(TypedValue::from(src)), Matcher::Any]
+    //         }
+    //     }
+    //     (None, Some(tgt)) => {
+    //         if args.arity == 1 {
+    //             vec![Matcher::Constant(TypedValue::from(tgt))]
+    //         } else {
+    //             vec![Matcher::Any, Matcher::Constant(TypedValue::from(tgt))]
+    //         }
+    //     }
+    //     (None, None) => {
+    //         if args.arity == 1 {
+    //             vec![Matcher::Any]
+    //         } else {
+    //             vec![Matcher::Any, Matcher::Any]
+    //         }
+    //     }
+    // };
 
+    // let query_predicate = if args.query_predicate.is_empty() {
+    //     "title"
+    // } else {
+    //     args.query_predicate.as_str()
+    // };
+    // let query = Query {
+    //     symbol: query_predicate,
+    //     matchers: matchers,
+    // };
 
-    let predicate = args.query_predicate.as_ref().unwrap();
-    let query = Query {
-        symbol: predicate,
-        matchers: matchers,
-    };
-
-
+    let query = build_query!(T(_, _, _));
     // ==== End query ====
 
     // ==== Start benchmarks ====
@@ -879,10 +967,11 @@ pub fn run_benchmarks_university(args: &Args) -> Result<Vec<BenchmarkResult>, Bo
             let mut seen = HashSet::new();
             let converted_result_tuples: Vec<Vec<TypedValue>> = result_tuples
                 .into_iter()
-                .map(|(a, b)| {
+                .map(|(a, b, c)| {
                     vec![
                         TypedValue::from(a),
                         TypedValue::from(b),
+                        TypedValue::from(c),
                     ]
                 })
                 .filter(|tuple| seen.insert(tuple.clone()))
@@ -896,6 +985,7 @@ pub fn run_benchmarks_university(args: &Args) -> Result<Vec<BenchmarkResult>, Bo
                 tuples,
                 converted_result_tuples.clone(),
             ));
+
             println!(
                 "Ascent result tuples number: {:?}",
                 converted_result_tuples.len()

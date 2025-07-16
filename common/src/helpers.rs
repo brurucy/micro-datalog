@@ -13,10 +13,31 @@ pub fn clean_rule(rule: &Rule) -> Rule {
         .map(|atom| (atom, atom.terms.clone().into_iter().collect::<HashSet<_>>()))
         .collect();
 
+    let confirmed_non_useless_atoms = body_atoms.iter().filter(|(position, atom)| {
+        let terms = body_atom_terms.get(atom).unwrap();
+        if terms.intersection(&head_atom_terms).collect_vec().len() != 0 {
+            true
+        } else {
+            false
+        }
+    }).collect_vec();
+
     body_atoms.iter().for_each(|(position, atom)| {
         let terms = body_atom_terms.get(atom).unwrap();
-        if terms.intersection(&head_atom_terms).collect_vec().len() == 0 {
-            clean_rule.body.remove(*position);
+        if !confirmed_non_useless_atoms.contains(&&(*position, atom)) {
+            let mut any_intersection = false;
+
+            for non_useless_atom in confirmed_non_useless_atoms.iter() {
+                let non_useless_atom_terms = body_atom_terms.get(non_useless_atom.1).unwrap();
+                if non_useless_atom_terms.intersection(&terms).collect_vec().len() != 0 {
+                    any_intersection = true;
+                    break;
+                }
+            }
+
+            if !any_intersection {  
+                clean_rule.body.remove(*position);
+            }
         }
     });
 
@@ -80,5 +101,59 @@ pub fn canonicalize_rule(rule: &Rule) -> Rule {
         head: rule.head.clone(),
         body: ordered_atoms,
         id: rule.id,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use datalog_syntax::*;
+    use datalog_rule_macro::rule;
+
+    use super::{clean_rule, canonicalize_rule};
+
+    #[test]
+    fn test_clean_rule() {
+        let dirty_rule = rule! { magic_tc_ffb(?w) <- [magic_tc_ffb(?w), tc_fff(?x, ?y, ?z)] };
+
+        let expected_clean_rule = rule! { magic_tc_ffb(?w) <- [magic_tc_ffb(?w)] };
+        let actual_clean_rule = clean_rule(&dirty_rule);
+
+        assert_eq!(actual_clean_rule, expected_clean_rule)
+    }
+
+    #[test]
+    fn test_clean_rule2() {
+        let dirty_rule = rule! { a(?x) <- [b(?x, ?y), c(?y)] };
+
+        let expected_clean_rule = rule! { a(?x) <- [b(?x, ?y), c(?y)] };
+        let actual_clean_rule = clean_rule(&dirty_rule);
+
+        assert_eq!(actual_clean_rule, expected_clean_rule)
+    }
+
+    #[test]
+    fn test_canonicalize_rule() {
+        let not_canonical_rule =
+            rule! { T_bff(?x, ?b, ?y) <- [magic_T_bff(?x), T_fbf(?a, 2, ?b), T_bff(?x, ?a, ?y)] };
+
+        let expected_canonicalization =
+            rule! { T_bff(?x, ?b, ?y) <- [magic_T_bff(?x), T_bff(?x, ?a, ?y), T_fbf(?a, 2, ?b)] };
+
+        let actual_canonicalization = canonicalize_rule(&not_canonical_rule);
+
+        assert_eq!(actual_canonicalization, expected_canonicalization)
+    }
+
+    #[test]
+    fn test_canonicalize_rule2() {
+        let not_canonical_rule =
+            rule! { tc_ffb(?x, ?y, ?z) <- [magic_tc_ffb(?z), e(?x, ?y), e(?y, ?z), e(?z, ?w)] };
+
+        let expected_canonicalization =
+            rule! { tc_ffb(?x, ?y, ?z) <- [magic_tc_ffb(?z), e(?y, ?z), e(?x, ?y), e(?z, ?w)] };
+
+        let actual_canonicalization = canonicalize_rule(&not_canonical_rule);
+
+        assert_eq!(actual_canonicalization, expected_canonicalization)
     }
 }

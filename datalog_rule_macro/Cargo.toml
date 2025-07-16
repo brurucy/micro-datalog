@@ -11,7 +11,6 @@ proc-macro = true
 syn = "1.0"
 quote = "1.0"
 datalog-syntax = { path = "../datalog-syntax" }
-common = { path = "../common" } 
 
 
 [dev-dependencies]

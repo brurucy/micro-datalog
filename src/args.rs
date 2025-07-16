@@ -43,7 +43,7 @@ pub struct Args {
 
     /// Query predicate
     #[arg(long)]
-    pub query_predicate: String,
+    pub query_predicate: Option<String>,
 
     /// Run micro streaming benchmark
     #[arg(long)]
@@ -92,6 +92,10 @@ pub struct Args {
     /// Run university benchmark
     #[arg(long)]
     pub university: bool,
+
+    /// Run university all benchmark
+    #[arg(long)]
+    pub university_all: bool,
 
     /// Arity of the query
     #[arg(long, default_value_t = 2)]

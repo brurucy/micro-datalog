@@ -1,7 +1,7 @@
-extern crate common;
+//extern crate common;
 extern crate proc_macro;
 
-use common::program_transformations::dependency_graph::{generate_rule_dependency_graph, stratify};
+//use common::program_transformations::dependency_graph::{generate_rule_dependency_graph, stratify};
 use datalog_syntax::{Atom, Rule, Term, TypedValue};
 use proc_macro::TokenStream;
 use quote::quote;
@@ -9,113 +9,16 @@ use std::collections::{HashMap, HashSet};
 use syn::parse::{Parse, ParseStream};
 use syn::{bracketed, parenthesized, Expr, Ident, Result, Token};
 
-#[derive(PartialEq, Eq, Hash, Debug)]
 enum TermArg {
     Variable(Ident),
     Constant(Expr),
 }
 
-impl PartialOrd for TermArg {
-    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
-        match (self, other) {
-            (TermArg::Variable(a), TermArg::Variable(b)) => Some(a.cmp(b)),
-            _ => Some(std::cmp::Ordering::Equal),
-        }
-    }
-}
-
-#[derive(PartialEq, Eq, Debug)]
 struct AtomArgs {
     name: Ident,
     args: Vec<TermArg>,
     sign: bool,
 }
-
-impl PartialOrd for AtomArgs {
-    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
-        let self_args: HashSet<_> = self.args.iter().collect();
-        let self_args_len = self_args.len();
-
-        let other_args: HashSet<_> = other.args.iter().collect();
-        let other_args_len = other_args.len();
-
-        let is_self_subset_of_other: bool = self_args.is_subset(&other_args);
-
-        if is_self_subset_of_other {
-            return Some(std::cmp::Ordering::Less);
-        }
-
-        let is_self_superset_of_other: bool = self_args.is_superset(&other_args);
-
-        if is_self_superset_of_other {
-            return Some(std::cmp::Ordering::Greater);
-        }
-
-        if self_args_len < other_args_len {
-            return Some(std::cmp::Ordering::Less);
-        } else if self_args_len > other_args_len {
-            return Some(std::cmp::Ordering::Greater);
-        }
-
-        let intersection: HashSet<_> = self_args.intersection(&other_args).collect();
-
-        for arg in intersection {
-            let position_in_self = self_args.iter().position(|x| x == arg).unwrap();
-            let position_in_other = other_args.iter().position(|x| x == arg).unwrap();
-
-            if position_in_self < position_in_other {
-                return Some(std::cmp::Ordering::Greater);
-            } else if position_in_self > position_in_other {
-                return Some(std::cmp::Ordering::Less);
-            }
-        }
-
-        return Some(std::cmp::Ordering::Equal);
-
-        //
-        // let self_intersection_with_other: HashSet<_> = self_args.intersection(&other_args).collect();
-
-        // if !self_intersection_with_other.is_empty() {
-        //     return Some(std::cmp::Ordering::Equal);
-        // }
-
-        // if self_intersection_with_other.len() == self_args_len && self_args_len == other_args_len {
-        //     return Some(std::cmp::Ordering::Equal);
-        // }
-
-        // if self_args_len < other_args_len {
-        //     return Some(std::cmp::Ordering::Less);
-        // } else if self_args_len > other_args_len {
-        //     return Some(std::cmp::Ordering::Greater);
-        // }
-
-        // for (self_arg, other_arg) in self_args.iter().zip(other_args.iter()) {
-        //     match self_arg.partial_cmp(other_arg) {
-        //         Some(std::cmp::Ordering::Less) => {
-        //             return Some(std::cmp::Ordering::Less);
-        //         }
-        //         Some(std::cmp::Ordering::Greater) => {
-        //             return Some(std::cmp::Ordering::Greater);
-        //         }
-        //         Some(std::cmp::Ordering::Equal) => {
-        //             continue;
-        //         }
-        //         None => {
-        //             return Some(std::cmp::Ordering::Equal);
-        //         }
-        //     }
-        // }
-
-        // Some(std::cmp::Ordering::Greater)
-    }
-}
-
-impl Ord for AtomArgs {
-    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
-        self.partial_cmp(other).unwrap()
-    }
-}
-
 struct RuleMacroInput {
     head: AtomArgs,
     body: Vec<AtomArgs>,
@@ -210,8 +113,6 @@ impl Parse for AtomArgs {
 #[proc_macro]
 pub fn rule(input: TokenStream) -> TokenStream {
     let mut input = syn::parse_macro_input!(input as RuleMacroInput);
-
-    input.body.sort();
 
     let head_name = &input.head.name;
     let head_terms: Vec<_> = input
@@ -417,75 +318,75 @@ fn expr_to_typed_value(expr: &Expr) -> TypedValue {
     }
 }
 
-#[proc_macro]
-pub fn stratified_program(input: TokenStream) -> TokenStream {
-    let input_clone = input.clone();
-    let parsed_input = syn::parse_macro_input!(input as ProgramMacroInput);
+// #[proc_macro]
+// pub fn stratified_program(input: TokenStream) -> TokenStream {
+//     let input_clone = input.clone();
+//     let parsed_input = syn::parse_macro_input!(input as ProgramMacroInput);
 
-    let mut program_rules: Vec<_> = vec![];
+//     let mut program_rules: Vec<_> = vec![];
 
-    for rule in parsed_input.rules {
-        // let head_name = &rule.head.name;
-        let head_terms: Vec<_> = rule
-            .head
-            .args
-            .iter()
-            .map(|arg| match arg {
-                TermArg::Variable(ident) => Term::Variable(ident.to_string()),
-                TermArg::Constant(expr) => Term::Constant(expr_to_typed_value(expr)),
-            })
-            .collect();
+//     for rule in parsed_input.rules {
+//         // let head_name = &rule.head.name;
+//         let head_terms: Vec<_> = rule
+//             .head
+//             .args
+//             .iter()
+//             .map(|arg| match arg {
+//                 TermArg::Variable(ident) => Term::Variable(ident.to_string()),
+//                 TermArg::Constant(expr) => Term::Constant(expr_to_typed_value(expr)),
+//             })
+//             .collect();
 
-        let body_atoms: Vec<_> = rule
-            .body
-            .iter()
-            .map(|atom| {
-                let atom_name = &atom.name;
-                let atom_terms: Vec<_> = atom
-                    .args
-                    .iter()
-                    .map(|arg| match arg {
-                        TermArg::Variable(ident) => Term::Variable(ident.to_string()),
-                        TermArg::Constant(expr) => Term::Constant(expr_to_typed_value(expr)),
-                    })
-                    .collect();
-                Atom {
-                    terms: atom_terms,
-                    symbol: atom_name.to_string(),
-                    sign: atom.sign,
-                }
-            })
-            .collect();
+//         let body_atoms: Vec<_> = rule
+//             .body
+//             .iter()
+//             .map(|atom| {
+//                 let atom_name = &atom.name;
+//                 let atom_terms: Vec<_> = atom
+//                     .args
+//                     .iter()
+//                     .map(|arg| match arg {
+//                         TermArg::Variable(ident) => Term::Variable(ident.to_string()),
+//                         TermArg::Constant(expr) => Term::Constant(expr_to_typed_value(expr)),
+//                     })
+//                     .collect();
+//                 Atom {
+//                     terms: atom_terms,
+//                     symbol: atom_name.to_string(),
+//                     sign: atom.sign,
+//                 }
+//             })
+//             .collect();
 
-        program_rules.push(Rule {
-            head: Atom {
-                terms: head_terms,
-                symbol: stringify!(head_name).to_string(),
-                sign: true,
-            },
-            body: body_atoms,
-            id: 0,
-        });
-    }
+//         program_rules.push(Rule {
+//             head: Atom {
+//                 terms: head_terms,
+//                 symbol: stringify!(head_name).to_string(),
+//                 sign: true,
+//             },
+//             body: body_atoms,
+//             id: 0,
+//         });
+//     }
 
-    let rule_graph = generate_rule_dependency_graph(&program_rules);
-    let stratification = stratify(&rule_graph);
+//     let rule_graph = generate_rule_dependency_graph(&program_rules);
+//     let stratification = stratify(&rule_graph);
 
-    // Check for cycles with negation
-    for cycle in &stratification {
-        for rule in cycle {
-            for atom in &rule.body {
-                if !atom.sign && cycle.iter().any(|r| r.head.symbol == atom.symbol) {
-                    let message = format!("Negated dependencies form a cycle in SCC: {:?}", cycle);
-                    let ident_with_span =
-                        string_to_ident_with_span(&atom.symbol, syn::__private::Span::call_site());
-                    return syn::Error::new(ident_with_span.span(), message)
-                        .to_compile_error()
-                        .into();
-                }
-            }
-        }
-    }
+//     // Check for cycles with negation
+//     for cycle in &stratification {
+//         for rule in cycle {
+//             for atom in &rule.body {
+//                 if !atom.sign && cycle.iter().any(|r| r.head.symbol == atom.symbol) {
+//                     let message = format!("Negated dependencies form a cycle in SCC: {:?}", cycle);
+//                     let ident_with_span =
+//                         string_to_ident_with_span(&atom.symbol, syn::__private::Span::call_site());
+//                     return syn::Error::new(ident_with_span.span(), message)
+//                         .to_compile_error()
+//                         .into();
+//                 }
+//             }
+//         }
+//     }
 
-    semipositive_program(input_clone)
-}
+//     semipositive_program(input_clone)
+// }

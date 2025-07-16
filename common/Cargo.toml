@@ -7,5 +7,6 @@ edition = "2021"
 
 [dependencies]
 datalog-syntax = { path = "../datalog-syntax" }
+datalog_rule_macro = { path = "../datalog_rule_macro" }
 petgraph = "0.6.4"
 itertools = "0.14.0"
