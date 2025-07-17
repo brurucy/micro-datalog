@@ -1,20 +1,13 @@
 #!/bin/bash
 
-# Array of query source values to test
-QUERY_SOURCES=(318 3843 1874 3937 217 3983 1748 3059 3890 443)
-
-
-# Run benchmarks for each query source
-for source in "${QUERY_SOURCES[@]}"; do
-    echo "Running benchmarks for query source: $source"
+# Run benchmarks 25 times
+for i in {1..25}; do
+    echo "Running benchmark iteration: $i"
     
-    # Run the benchmark with current query source
-        #--edges 14000 \
-       # --ascent
-    cargo run --release -- \
-        --query-source $source \
-       --edges 13000 \
-       --ascent
+    cargo run --release -- --use-all-data --university \
+    --micro-magic --ascent --micro-streaming \
+    --query-predicate subOrganizationOf \
+    --query-source-str ResearchGroup0 --arity 2
 done
 
 echo "All benchmarks completed!" 

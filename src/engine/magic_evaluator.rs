@@ -34,7 +34,10 @@ impl<'a> MagicEvaluator {
         let (magic_program, magic_seeds) = apply_magic_transformation(&self.program, query);
         //println!("Magic seeds: {:?}", magic_seeds);
 
-        //println!("Magic program: ====");
+        // println!("Magic program: ====");
+        // for rule in &magic_program.inner {
+        //     println!("Rule: {:?}", rule);
+        // }
      
         // Create runtime with the transformed program
         let mut runtime = MicroRuntime::new(magic_program.clone());

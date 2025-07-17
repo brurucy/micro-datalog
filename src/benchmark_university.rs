@@ -489,7 +489,7 @@ fn run_ascent_benchmark(
             }
 
             _ => {
-                println!("Invalid predicate: {}", pred);
+                //println!("Invalid predicate: {}", pred);
                 continue;
             }
         }
@@ -500,7 +500,7 @@ fn run_ascent_benchmark(
     let elapsed_time = start.elapsed();
     // Query tuples based on source and target
     let results: Vec<_> = runtime
-        .member
+        .memberOf
         .iter()
         .cloned()
         // .filter(
@@ -819,10 +819,10 @@ pub fn run_benchmarks_university(args: &Args) -> Result<Vec<BenchmarkResult>, Bo
                 tuples,
                 result_tuples.clone(),
             ));
-            println!(
-                "Micro-streaming result tuples number: {:?}",
-                result_tuples.len()
-            );
+            // println!(
+            //     "Micro-streaming result tuples number: {:?}",
+            //     result_tuples.len()
+            // );
         }
 
         if args.micro_magic {
@@ -841,10 +841,10 @@ pub fn run_benchmarks_university(args: &Args) -> Result<Vec<BenchmarkResult>, Bo
                 tuples,
                 result_tuples.clone(),
             ));
-            println!(
-                "Micro-magic result tuples number: {:?}",
-                result_tuples.len()
-            );
+            // println!(
+            //     "Micro-magic result tuples number: {:?}",
+            //     result_tuples.len()
+            // );
         }
 
         if args.micro_tabling {
@@ -864,10 +864,10 @@ pub fn run_benchmarks_university(args: &Args) -> Result<Vec<BenchmarkResult>, Bo
                 result_tuples.clone(),
             ));
 
-            println!(
-                "Micro-tabling result tuples number: {:?}",
-                result_tuples.len()
-            );
+            // println!(
+            //     "Micro-tabling result tuples number: {:?}",
+            //     result_tuples.len()
+            // );
         }
 
         if args.ascent {
@@ -896,10 +896,10 @@ pub fn run_benchmarks_university(args: &Args) -> Result<Vec<BenchmarkResult>, Bo
                 tuples,
                 converted_result_tuples.clone(),
             ));
-            println!(
-                "Ascent result tuples number: {:?}",
-                converted_result_tuples.len()
-            );
+            // println!(
+            //     "Ascent result tuples number: {:?}",
+            //     converted_result_tuples.len()
+            // );
         }
 
         // Print progress

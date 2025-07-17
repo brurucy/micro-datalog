@@ -536,7 +536,7 @@ fn run_ascent_benchmark(
             }
 
             _ => {
-                println!("Invalid predicate: {}", pred);
+                //println!("Invalid predicate: {}", pred);
                 continue;
             }
         }
@@ -550,19 +550,6 @@ fn run_ascent_benchmark(
         .T
         .iter()
         .cloned()
-        // .filter(
-        //     |&(x)| match (query_source, query_middle, query_target) {
-        //         (Some(src), Some(middle), Some(tgt)) => x == src && z == tgt && y == middle,
-        //         (Some(src), None, Some(tgt)) => x == src && z == tgt,
-        //         (None, Some(middle), Some(tgt)) => y == middle && z == tgt,
-        //         (Some(src), None, None) => x == src,
-        //         (None, Some(middle), None) => y == middle,
-        //         (None, None, Some(tgt)) => z == tgt,
-        //         (Some(src), Some(middle), None) => x == src && y == middle,
-        //         (None, None, None) => true,
-        //     },
-        // )
-        //.filter(|(x, _ )| x.as_str() == query_source_str.as_ref().unwrap())
         .collect();
     (elapsed_time, results.len(), results)
 }
@@ -827,44 +814,6 @@ pub fn run_benchmarks_university_all(args: &Args) -> Result<Vec<BenchmarkResult>
     // ==== End program ====
 
     // ==== Query ====
-    // let matchers = match (args.query_source_str.clone(), args.query_target_str.clone()) {
-    //     (Some(src), Some(tgt)) => vec![
-    //         Matcher::Constant(TypedValue::from(src)),
-    //         Matcher::Constant(TypedValue::from(tgt)),
-    //     ],
-    //     (Some(src), None) => {
-    //         if args.arity == 1 {
-    //             vec![Matcher::Constant(TypedValue::from(src))]
-    //         } else {
-    //             vec![Matcher::Constant(TypedValue::from(src)), Matcher::Any]
-    //         }
-    //     }
-    //     (None, Some(tgt)) => {
-    //         if args.arity == 1 {
-    //             vec![Matcher::Constant(TypedValue::from(tgt))]
-    //         } else {
-    //             vec![Matcher::Any, Matcher::Constant(TypedValue::from(tgt))]
-    //         }
-    //     }
-    //     (None, None) => {
-    //         if args.arity == 1 {
-    //             vec![Matcher::Any]
-    //         } else {
-    //             vec![Matcher::Any, Matcher::Any]
-    //         }
-    //     }
-    // };
-
-    // let query_predicate = if args.query_predicate.is_empty() {
-    //     "title"
-    // } else {
-    //     args.query_predicate.as_str()
-    // };
-    // let query = Query {
-    //     symbol: query_predicate,
-    //     matchers: matchers,
-    // };
-
     let query = build_query!(T(_, _, _));
     // ==== End query ====
 
@@ -905,12 +854,12 @@ pub fn run_benchmarks_university_all(args: &Args) -> Result<Vec<BenchmarkResult>
                 integral.len(),
                 time,
                 tuples,
-                result_tuples.clone(),
+                vec![],
             ));
-            println!(
-                "Micro-streaming result tuples number: {:?}",
-                result_tuples.len()
-            );
+            // println!(
+            //     "Micro-streaming result tuples number: {:?}",
+            //     result_tuples.len()
+            // );
         }
 
         if args.micro_magic {
@@ -927,12 +876,12 @@ pub fn run_benchmarks_university_all(args: &Args) -> Result<Vec<BenchmarkResult>
                 integral.len(),
                 time,
                 tuples,
-                result_tuples.clone(),
+                vec![],
             ));
-            println!(
-                "Micro-magic result tuples number: {:?}",
-                result_tuples.len()
-            );
+            // println!(
+            //     "Micro-magic result tuples number: {:?}",
+            //     result_tuples.len()
+            // );
         }
 
         if args.micro_tabling {
@@ -949,13 +898,13 @@ pub fn run_benchmarks_university_all(args: &Args) -> Result<Vec<BenchmarkResult>
                 integral.len(),
                 time,
                 tuples,
-                result_tuples.clone(),
+                vec![],
             ));
 
-            println!(
-                "Micro-tabling result tuples number: {:?}",
-                result_tuples.len()
-            );
+            // println!(
+            //     "Micro-tabling result tuples number: {:?}",
+            //     result_tuples.len()
+            // );
         }
 
         if args.ascent {
@@ -983,13 +932,13 @@ pub fn run_benchmarks_university_all(args: &Args) -> Result<Vec<BenchmarkResult>
                 integral.len(),
                 time,
                 tuples,
-                converted_result_tuples.clone(),
+                vec![],
             ));
 
-            println!(
-                "Ascent result tuples number: {:?}",
-                converted_result_tuples.len()
-            );
+            // println!(
+            //     "Ascent result tuples number: {:?}",
+            //     converted_result_tuples.len()
+            // );
         }
 
         // Print progress

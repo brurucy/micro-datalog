@@ -150,21 +150,6 @@ pub fn run_benchmarks_rdf(
     //     T(?x, ?y, ?z) <- [T(?x, ?y, ?z), T(?y, ?z, ?w)],
     // };
 
-    // let program = program! { 
-    //     T(?s, ?p, ?o) <- [RDF(?s, ?p, ?o)], 
-    //     T(?a, ?b, ?c) <- [T(?d, ?e, ?c), T(?a, ?b, ?o)], 
-    //     //T(?z, ?q, ?x) <- [T(?a, ?q, ?x), T(?y, ?a, ?z)], 
-    //     //T(?z, ?q, ?x) <- [T(?a, ?q, ?x), T(?y, ?a, ?z)], 
-    //     //T(?x, ?q, ?z) <- [T(?x, ?q, ?y), T(?y, ?q, ?z)], 
-    //     //T(?x, ?q, ?z) <- [T(?x, ?q, ?y), T(?y, ?q, ?z)], 
-    //     //T(?z, ?q, ?y) <- [T(?x, ?q, ?y), T(?z, ?q, ?x)], 
-    //     //T(?x, ?b, ?y) <- [T(?a, ?q, ?b), T(?x, ?a, ?y)]
-    // };
-
-    // let program = program! {
-    //     T(?s, ?p, ?o) <- [RDF(?s, ?p, ?o)],
-    //     T(?y, 0usize, ?x) <- [T(?a, 3usize, ?x), RDF(?y, ?a, ?z)],
-    // };
 
     let mut integral = Vec::new();
     let mut results = Vec::new();
@@ -198,9 +183,6 @@ pub fn run_benchmarks_rdf(
             parsed_data.push((s, p, o));
         }
     });
-
-    // Save parsed data to file
-    //save_parsed_data_to_file(&parsed_data, "parsed_lubm1_data.txt")?;
     
     let chunk_size = if args.no_batching { parsed_data.len() } else { batch_size };
 
@@ -297,16 +279,12 @@ pub fn run_benchmarks_rdf(
                 tuples,
                 converted_result_tuples.clone(),
             ));
+
             println!("Ascent result tuples number: {:?}", converted_result_tuples.len());
         }
 
         // Print progress
         println!("Processed {} edges", integral.len());
-    }
-
-    // Save benchmark results to text file
-    if let Some(last_result) = results.last() {
-        save_benchmark_results_to_txt(&last_result.result_tuples, "benchmark_results.txt")?;
     }
 
     Ok(results)

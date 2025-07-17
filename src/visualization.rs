@@ -5,6 +5,7 @@ use std::error::Error;
 use std::path::Path;
 use std::ops::Range;
 use crate::benchmark::BenchmarkResult;
+use plotters::prelude::IntoLogRange;
 
 pub struct VisualizationOptions {
     pub show_micro_streaming: bool,
@@ -30,17 +31,17 @@ fn create_performance_plot(
     let max_edges = results.iter().map(|r| r.cumulative_edges as f64).max_by(|a, b| a.partial_cmp(b).unwrap()).unwrap_or(0.0);
     let max_time = results.iter().map(|r| r.execution_time_micros as f64 / 1000.0).max_by(|a, b| a.partial_cmp(b).unwrap()).unwrap_or(0.0);
 
-    let x_scale = options.x_scale.unwrap_or((0.0, max_edges));
-    let y_scale = options.y_scale_performance.unwrap_or((0.0, max_time));
+    let x_scale = options.x_scale.unwrap_or((1.0, max_edges));
+    let y_scale = options.y_scale_performance.unwrap_or((1.0, max_time));
 
     let mut chart = ChartBuilder::on(&root)
         .caption("Performance Comparison", ("sans-serif", 50).into_font())
         .margin(5)
         .x_label_area_size(30)
-        .y_label_area_size(30)
+        .y_label_area_size(80)
         .build_cartesian_2d(
             RangedCoordf64::from(Range { start: x_scale.0, end: x_scale.1 }),
-            RangedCoordf64::from(Range { start: y_scale.0, end: y_scale.1 }),
+            (y_scale.0..y_scale.1).log_scale(),
         )?;
 
     chart.configure_mesh().draw()?;

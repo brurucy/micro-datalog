@@ -14,12 +14,24 @@ use std::io::{BufReader, BufWriter};
 use std::path::Path;
 use std::path::PathBuf;
 
-fn save_benchmark_results(results: &[BenchmarkResult], path: &Path) -> Result<(), Box<dyn Error>> {
+fn save_benchmark_results(results: &[BenchmarkResult], path: &Path, args: &Args) -> Result<(), Box<dyn Error>> {
     // Create results directory if it doesn't exist
-    std::fs::create_dir_all("results")?;
-
-    // Create the full path in the results directory
-    let full_path = Path::new("results").join(path);
+ 
+    let full_path = if args.university_all {
+        std::fs::create_dir_all("results/university_all")?;
+        Path::new("results/university_all").join(path)
+    } else if args.rdf {
+        std::fs::create_dir_all("results/rdf")?;
+        Path::new("results/rdf").join(path)
+    } else if args.tc {
+        std::fs::create_dir_all("results/tc")?;
+        Path::new("results/tc").join(path)
+    } else if args.university {
+        std::fs::create_dir_all("results/university")?;
+        Path::new("results/university").join(path)
+    } else {
+        Path::new("results").join(path)
+    };
 
     let file = File::create(full_path)?;
     let writer = BufWriter::new(file);
@@ -40,32 +52,32 @@ fn load_benchmark_results(path: &Path) -> Result<Vec<BenchmarkResult>, Box<dyn E
 fn main() -> Result<(), Box<dyn Error>> {
     let args = Args::parse();
 
-    // If visualize_results is specified, just run visualization and exit
-    // if let Some(results_path) = &args.visualize_results {
-    //     println!(
-    //         "Generating visualizations from {}...",
-    //         results_path.display()
-    //     );
-    //     let results = load_benchmark_results(results_path)?;
-    //     let vis_options = micro_datalog::visualization::VisualizationOptions {
-    //         show_micro_streaming: true,
-    //         show_micro_magic: true,
-    //         show_micro_tabling: true,
-    //         show_crepe: true,
-    //         show_ascent: true,
-    //         x_scale: None, // Let it be determined by the data
-    //         y_scale_performance: Some((0.0, args.y_scale_performance)),
-    //         y_scale_tuples: Some((0.0, args.y_scale_tuples)),
-    //     };
-    //     visualize_results(
-    //         &results,
-    //         &Path::new("visualizations"),
-    //         &vis_options,
-    //         results_path.file_name().unwrap().to_str().unwrap(),
-    //     )?;
-    //     println!("Visualizations saved to visualizations/");
-    //     return Ok(());
-    // }
+    //If visualize_results is specified, just run visualization and exit
+    if let Some(results_path) = &args.visualize_results {
+        println!(
+            "Generating visualizations from {}...",
+            results_path.display()
+        );
+        let results = load_benchmark_results(results_path)?;
+        let vis_options = micro_datalog::visualization::VisualizationOptions {
+            show_micro_streaming: true,
+            show_micro_magic: true,
+            show_micro_tabling: true,
+            show_crepe: true,
+            show_ascent: true,
+            x_scale: None, // Let it be determined by the data
+            y_scale_performance: Some((0.0, args.y_scale_performance)),
+            y_scale_tuples: Some((0.0, args.y_scale_tuples)),
+        };
+        visualize_results(
+            &results,
+            &Path::new("visualizations"),
+            &vis_options,
+            results_path.file_name().unwrap().to_str().unwrap(),
+        )?;
+        println!("Visualizations saved to visualizations/");
+        return Ok(());
+    }
 
     let vis_dir = Path::new("visualizations");
 
@@ -168,7 +180,7 @@ fn main() -> Result<(), Box<dyn Error>> {
         results = run_benchmarks_university_all(&args)?;
     }
 
-    save_benchmark_results(&results, &results_path)?;
+    save_benchmark_results(&results, &results_path, &args)?;
     println!(
         "Benchmarks completed and saved to {}",
         results_path.display()

@@ -100,4 +100,16 @@ pub struct Args {
     /// Arity of the query
     #[arg(long, default_value_t = 2)]
     pub arity: usize,
+
+    /// Use facebook data
+    #[arg(long)]
+    pub fb: bool,
+
+    /// Use dense data
+    #[arg(long)]
+    pub dense: bool,
+
+    /// Use sparse data
+    #[arg(long)]
+    pub sparse: bool,
 } 

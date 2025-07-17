@@ -30,6 +30,7 @@ pub struct MicroRuntime {
     recursive_program: Program,
 }
 
+#[derive(Debug, Clone, Copy)]
 pub enum Strategy {
     BottomUp,
     TopDown
