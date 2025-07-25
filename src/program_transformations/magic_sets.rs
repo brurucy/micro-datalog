@@ -1,6 +1,5 @@
 use crate::helpers::helpers::*;
 use crate::program_transformations::adorned_atom::*;
-use datalog_rule_macro::program;
 use datalog_syntax::*;
 use std::collections::HashSet;
 
@@ -286,9 +285,9 @@ fn create_magic_rules(
             let magic_head = make_magic_atom(&create_adorned_atom_from_adorned_pred(body_atom));
             if !magic_head.terms.is_empty() {
                 let has_magic_atoms_besides_itself_in_binding_chain =
-                    (!binding_chain.iter().any(|atom| {
+                    !binding_chain.iter().any(|atom| {
                         atom.symbol == magic_head.symbol && atom.terms == magic_head.terms
-                    }) || binding_chain.len() > 1);
+                    }) || binding_chain.len() > 1;
 
                 let has_variables_in_head_terms = magic_head.terms.iter().any(|term| {
                     if let Term::Variable(_) = term {
@@ -407,7 +406,7 @@ pub fn modify_original_rule(
         }
     }
 
-    let mut modified_rule = Rule {
+    let modified_rule = Rule {
         head: create_adorned_head_predicate(AdornedAtom::from_atom_and_bound_vars(
             &rule.head,
             &bound_terms
@@ -490,9 +489,8 @@ fn collect_new_adorned_atoms<'a>(
     };
     let mut new_adorned_atoms = Vec::new();
     let mut current_bound_vars: HashSet<String> = get_bound_vars_from_adorned_atom(&adorned_atom);
-    let mut last_derived_pos: usize;
 
-    for (current_pos, body_atom) in rule.body.iter().enumerate() {
+    for (_current_pos, body_atom) in rule.body.iter().enumerate() {
         if is_derived_predicate(program, &body_atom.symbol) {
             // Create an adorned atom for this position
             let adorned_body_atom =

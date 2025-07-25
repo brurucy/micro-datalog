@@ -176,10 +176,10 @@ fn main() {
     let mut parser = SimpleDatalogParser::new();
     let facts = parser.parse_to_datalog_format(rdf_data);
     
-    println!("Generated Datalog facts:");
-    for fact in facts {
-        println!("{}", fact);
-    }
+    // println!("Generated Datalog facts:");
+    // for fact in facts {
+    //     println!("{}", fact);
+    // }
 }
 
 // Simple function to parse RDF line into Datalog format

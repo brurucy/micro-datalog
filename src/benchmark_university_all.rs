@@ -6,7 +6,7 @@ use ascent::ascent;
 use datalog_rule_macro::program;
 use datalog_syntax::*;
 use itertools::*;
-use std::collections::{HashMap, HashSet};
+use std::collections::HashSet;
 use std::error::Error;
 use std::fs::File;
 use std::io::Write;
@@ -370,17 +370,17 @@ ascent! {
     subOrganizationOf(x,z) <-- subOrganizationOf(x,y), subOrganizationOf(y,z);
 }
 
-fn save_parsed_data_to_file(
-    parsed_data: &Vec<(String, String, String)>,
-    filename: &str,
-) -> Result<(), Box<dyn Error>> {
-    let mut file = File::create(filename)?;
-    for (s, p, o) in parsed_data {
-        writeln!(file, "{} {} {}", s, p, o)?;
-    }
-    println!("Parsed data saved to {}", filename);
-    Ok(())
-}
+// fn save_parsed_data_to_file(
+//     parsed_data: &Vec<(String, String, String)>,
+//     filename: &str,
+// ) -> Result<(), Box<dyn Error>> {
+//     let mut file = File::create(filename)?;
+//     for (s, p, o) in parsed_data {
+//         writeln!(file, "{} {} {}", s, p, o)?;
+//     }
+//     println!("Parsed data saved to {}", filename);
+//     Ok(())
+// }
 
 fn run_ascent_benchmark(
     runtime: &mut AscentProgram,

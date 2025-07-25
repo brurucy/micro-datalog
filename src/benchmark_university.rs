@@ -6,10 +6,7 @@ use ascent::ascent;
 use datalog_rule_macro::program;
 use datalog_syntax::*;
 use itertools::*;
-use std::collections::{HashMap, HashSet};
 use std::error::Error;
-use std::fs::File;
-use std::io::Write;
 use std::time::{Duration, Instant};
 
 ascent! {
@@ -333,22 +330,23 @@ ascent! {
     subOrganizationOf(x,z) <-- subOrganizationOf(x,y), subOrganizationOf(y,z);
 }
 
-fn save_parsed_data_to_file(
-    parsed_data: &Vec<(String, String)>,
-    filename: &str,
-) -> Result<(), Box<dyn Error>> {
-    let mut file = File::create(filename)?;
-    for (s, p) in parsed_data {
-        writeln!(file, "{} {}", s, p)?;
-    }
-    println!("Parsed data saved to {}", filename);
-    Ok(())
-}
+// fn save_parsed_data_to_file(
+//     parsed_data: &Vec<(String, String)>,
+//     filename: &str,
+// ) -> Result<(), Box<dyn Error>> {
+//     let mut file = File::create(filename)?;
+//     for (s, p) in parsed_data {
+//         writeln!(file, "{} {}", s, p)?;
+//     }
+//     println!("Parsed data saved to {}", filename);
+//     Ok(())
+// }
 
 fn run_ascent_benchmark(
     runtime: &mut AscentProgram,
     edges: &[(String, String, String)],
     query_source_str: Option<String>,
+    query_target_str: Option<String>,
 ) -> (Duration, usize, Vec<(String, String)>) {
     for (pred, x, y) in edges {
         match pred.as_str() {
@@ -500,22 +498,10 @@ fn run_ascent_benchmark(
     let elapsed_time = start.elapsed();
     // Query tuples based on source and target
     let results: Vec<_> = runtime
-        .memberOf
+        .degreeFrom 
         .iter()
         .cloned()
-        // .filter(
-        //     |&(x)| match (query_source, query_middle, query_target) {
-        //         (Some(src), Some(middle), Some(tgt)) => x == src && z == tgt && y == middle,
-        //         (Some(src), None, Some(tgt)) => x == src && z == tgt,
-        //         (None, Some(middle), Some(tgt)) => y == middle && z == tgt,
-        //         (Some(src), None, None) => x == src,
-        //         (None, Some(middle), None) => y == middle,
-        //         (None, None, Some(tgt)) => z == tgt,
-        //         (Some(src), Some(middle), None) => x == src && y == middle,
-        //         (None, None, None) => true,
-        //     },
-        // )
-        .filter(|(x, _ )| x.as_str() == query_source_str.as_ref().unwrap())
+        .filter(|(x, y)| x.as_str() == query_source_str.as_ref().unwrap() && y.as_str() == query_target_str.as_ref().unwrap())
         .collect();
     (elapsed_time, results.len(), results)
 }
@@ -817,7 +803,7 @@ pub fn run_benchmarks_university(args: &Args) -> Result<Vec<BenchmarkResult>, Bo
                 integral.len(),
                 time,
                 tuples,
-                result_tuples.clone(),
+                vec![],
             ));
             // println!(
             //     "Micro-streaming result tuples number: {:?}",
@@ -826,7 +812,7 @@ pub fn run_benchmarks_university(args: &Args) -> Result<Vec<BenchmarkResult>, Bo
         }
 
         if args.micro_magic {
-            let (time, tuples, result_tuples) = run_micro_benchmark(
+            let (time, tuples, _result_tuples) = run_micro_benchmark(
                 &mut streaming_micro_magic,
                 &batch,
                 Some(Strategy::BottomUp),
@@ -839,7 +825,7 @@ pub fn run_benchmarks_university(args: &Args) -> Result<Vec<BenchmarkResult>, Bo
                 integral.len(),
                 time,
                 tuples,
-                result_tuples.clone(),
+                vec![],
             ));
             // println!(
             //     "Micro-magic result tuples number: {:?}",
@@ -848,7 +834,7 @@ pub fn run_benchmarks_university(args: &Args) -> Result<Vec<BenchmarkResult>, Bo
         }
 
         if args.micro_tabling {
-            let (time, tuples, result_tuples) = run_micro_benchmark(
+            let (time, tuples, _result_tuples) = run_micro_benchmark(
                 &mut streaming_micro_tabling,
                 &batch,
                 Some(Strategy::TopDown),
@@ -861,7 +847,7 @@ pub fn run_benchmarks_university(args: &Args) -> Result<Vec<BenchmarkResult>, Bo
                 integral.len(),
                 time,
                 tuples,
-                result_tuples.clone(),
+                vec![],
             ));
 
             // println!(
@@ -871,22 +857,23 @@ pub fn run_benchmarks_university(args: &Args) -> Result<Vec<BenchmarkResult>, Bo
         }
 
         if args.ascent {
-            let (time, tuples, result_tuples) = run_ascent_benchmark(
+            let (time, tuples, _result_tuples) = run_ascent_benchmark(
                 &mut ascent_runtime,
                 &integral,
                 args.query_source_str.clone(),
+                args.query_target_str.clone()
             );
-            let mut seen = HashSet::new();
-            let converted_result_tuples: Vec<Vec<TypedValue>> = result_tuples
-                .into_iter()
-                .map(|(a, b)| {
-                    vec![
-                        TypedValue::from(a),
-                        TypedValue::from(b),
-                    ]
-                })
-                .filter(|tuple| seen.insert(tuple.clone()))
-                .collect();
+            // let mut seen = HashSet::new();
+            // let converted_result_tuples: Vec<Vec<TypedValue>> = result_tuples
+            //     .into_iter()
+            //     .map(|(a, b)| {
+            //         vec![
+            //             TypedValue::from(a),
+            //             TypedValue::from(b),
+            //         ]
+            //     })
+            //     .filter(|tuple| seen.insert(tuple.clone()))
+            //     .collect();
 
             results.push(BenchmarkResult::new(
                 "ascent",
@@ -894,7 +881,7 @@ pub fn run_benchmarks_university(args: &Args) -> Result<Vec<BenchmarkResult>, Bo
                 integral.len(),
                 time,
                 tuples,
-                converted_result_tuples.clone(),
+                vec![],
             ));
             // println!(
             //     "Ascent result tuples number: {:?}",

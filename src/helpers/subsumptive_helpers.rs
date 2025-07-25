@@ -27,22 +27,12 @@ pub fn update_bindings(
     atom: &Atom,
     results: &HashSet<AnonymousGroundAtom>,
 ) {
-    // Purpose: Updates variable bindings based on query results
-    // - Takes results from evaluating an atom and extracts variable bindings
-    // - For each variable in the atom, if there's a corresponding value in a result,
-    //   add it to the bindings map
-    // - Note: This function assumes a single result tuple; with multiple results,
-    //   it would only use the first one (in practice, this would be called in a loop)
-
-    // Get one result to update bindings (ideally we'd handle multiple results)
-    if let Some(result) = results.iter().next() {
-        // Map each variable in the atom to its corresponding value in the result
+    for result in results.iter() {
         atom.terms.iter().enumerate().for_each(|(i, term)| {
             if let Term::Variable(var) = term {
-                if i < result.len() {
-                    // Added safety check
-                    bindings.insert(var.clone(), result[i].clone());
-                }
+                if var == "_" { println!("EMPTY VAR {:?}, {:?}", result[i], atom)}
+                bindings.insert(var.clone(), result[i].clone());
+                
             }
         });
     }
@@ -80,15 +70,16 @@ pub fn create_result(
     Some(result)
 }
 
-pub fn subsumes(subsuming: &[Option<TypedValue>], subsumed: &[Option<TypedValue>]) -> bool {
-    if subsuming.len() != subsumed.len() {
+pub fn subsumes(subsuming: &Atom, subsumed: &Atom) -> bool {
+    if subsuming.terms.len() != subsumed.terms.len() {
         return false;
     }
+    let subsumed_terms = subsumed.terms.clone();
 
-    subsuming.iter().zip(subsumed).all(|(s, p)| {
+    subsuming.terms.iter().zip(subsumed_terms).all(|(s, p)| {
         match (s, p) {
-            (None, _) => true, // Free variable subsumes anything
-            (Some(s_val), Some(p_val)) => s_val == p_val,
+            (Term::Variable(_), _) => true, // Free variable subsumes anything
+            (Term::Constant(s_val), Term::Constant(p_val)) => *s_val == p_val,
             _ => false,
         }
     })

@@ -31,21 +31,21 @@ const SUB_PROPERTY_OF: &'static str = "<http://www.w3.org/2000/01/rdf-schema#sub
 const DOMAIN: &'static str = "<http://www.w3.org/2000/01/rdf-schema#domain>";
 const RANGE: &'static str = "<http://www.w3.org/2000/01/rdf-schema#range>";
 const PROPERTY: &'static str = "<http://www.w3.org/1999/02/22-rdf-syntax-ns#Property>";
-const PREFIX: &'static str = "http://www.lehigh.edu/~zhp2/2004/0401/univ-bench.owl#";
+//const PREFIX: &'static str = "http://www.lehigh.edu/~zhp2/2004/0401/univ-bench.owl#";
 
-fn save_benchmark_results_to_txt(results: &[Vec<TypedValue>], filename: &str) -> Result<(), Box<dyn Error>> {
-    let mut file = File::create(filename)?;
-    for result in results {
-        let values: Vec<String> = result.iter().map(|v| match v {
-            TypedValue::Int(n) => n.to_string(),
-            TypedValue::Str(s) => s.clone(),
-            TypedValue::Bool(b) => b.to_string(),
-        }).collect();
-        writeln!(file, "{}", values.join(" "))?;
-    }
-    println!("Benchmark results saved to {}", filename);
-    Ok(())
-}
+// fn save_benchmark_results_to_txt(results: &[Vec<TypedValue>], filename: &str) -> Result<(), Box<dyn Error>> {
+//     let mut file = File::create(filename)?;
+//     for result in results {
+//         let values: Vec<String> = result.iter().map(|v| match v {
+//             TypedValue::Int(n) => n.to_string(),
+//             TypedValue::Str(s) => s.clone(),
+//             TypedValue::Bool(b) => b.to_string(),
+//         }).collect();
+//         writeln!(file, "{}", values.join(" "))?;
+//     }
+//     println!("Benchmark results saved to {}", filename);
+//     Ok(())
+// }
 
 fn run_ascent_benchmark_lubm1(
     runtime: &mut AscentProgram,
@@ -90,7 +90,7 @@ fn run_micro_benchmark_lubm1(
     query_target: Option<usize>,
     query_middle: Option<usize>,
 ) -> (Duration, usize, Vec<Vec<TypedValue>>) {
-    println!("Running micro benchmark with query: {:?}, {:?}, {:?}", query_source, query_middle, query_target);
+    //println!("Running micro benchmark with query: {:?}, {:?}, {:?}", query_source, query_middle, query_target);
     if let Some(s) = strategy {
         for &(from, middle, to) in edges {
             runtime.insert("RDF", (from, middle, to));
@@ -175,7 +175,6 @@ pub fn run_benchmarks_rdf(
                 .split_whitespace()
                 .map(|resource| resource.trim().to_string())
                 .collect();
-            println!("Triple: {:?}", triple);
             let s = rodeo.get_or_intern(&triple[0]).into_usize();
             let p = rodeo.get_or_intern(&triple[1]).into_usize();
             let o = rodeo.get_or_intern(&triple[2]).into_usize();
@@ -194,7 +193,7 @@ pub fn run_benchmarks_rdf(
 
         // Run selected benchmarks on just the new batch
         if args.micro_streaming {
-            let (time, tuples, result_tuples) = run_micro_benchmark_lubm1(
+            let (time, tuples, _result_tuples) = run_micro_benchmark_lubm1(
                 &mut streaming_micro,
                 &batch,
                 None,
@@ -210,13 +209,12 @@ pub fn run_benchmarks_rdf(
                 integral.len(),
                 time,
                 tuples,
-                result_tuples.clone(),
+                vec![],
             ));
-            println!("Micro-streaming result tuples number: {:?}", result_tuples.len());
         }
 
         if args.micro_magic {
-            let (time, tuples, result_tuples) = run_micro_benchmark_lubm1(
+            let (time, tuples, _result_tuples) = run_micro_benchmark_lubm1(
                 &mut streaming_micro_magic,
                 &batch,
                 Some(Strategy::BottomUp),
@@ -233,11 +231,10 @@ pub fn run_benchmarks_rdf(
                 tuples,
                 vec![],
             ));
-            println!("Micro-magic result tuples number: {:?}", result_tuples.len());
         }
 
         if args.micro_tabling {
-            let (time, tuples, result_tuples) = run_micro_benchmark_lubm1(
+            let (time, tuples, _result_tuples) = run_micro_benchmark_lubm1(
                 &mut streaming_micro_tabling,
                 &batch,
                 Some(Strategy::TopDown),
@@ -252,10 +249,9 @@ pub fn run_benchmarks_rdf(
                 integral.len(),
                 time,
                 tuples,
-                result_tuples.clone(),
+                vec![],
             ));
 
-            println!("Micro-tabling result tuples number: {:?}", result_tuples.len());
         }
 
         if args.ascent {
@@ -266,10 +262,10 @@ pub fn run_benchmarks_rdf(
                 args.query_target,
                 args.query_middle,
             );
-            let converted_result_tuples: Vec<Vec<TypedValue>> = result_tuples
-                .into_iter()
-                .map(|(a, b, c)| vec![TypedValue::from(a), TypedValue::from(b), TypedValue::from(c)])
-                .collect();
+            // let converted_result_tuples: Vec<Vec<TypedValue>> = result_tuples
+            //     .into_iter()
+            //     .map(|(a, b, c)| vec![TypedValue::from(a), TypedValue::from(b), TypedValue::from(c)])
+            //     .collect();
 
             results.push(BenchmarkResult::new(
                 "ascent",
@@ -277,10 +273,9 @@ pub fn run_benchmarks_rdf(
                 integral.len(),
                 time,
                 tuples,
-                converted_result_tuples.clone(),
+                vec![],
             ));
 
-            println!("Ascent result tuples number: {:?}", converted_result_tuples.len());
         }
 
         // Print progress

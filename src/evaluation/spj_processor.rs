@@ -790,6 +790,29 @@ mod test {
     }
 
     #[test]
+    fn from_binary_rule_into_stack_2_constants() {
+        let rule = rule! { T(?y, 0, 3) <- [T(0, 2, ?y), T(?y, 5, ?x)] };
+
+        let expected_stack = Stack {
+            inner: vec![
+                Instruction::Select("T".to_string(), true, 1, TypedValue::Int(2)),
+                Instruction::Select("T".to_string(), true, 1, TypedValue::Int(2)),
+                Instruction::Join("T_1=2".to_string(), "T_1=2".to_string(), vec![(2, 0)]),
+                Instruction::Project(
+                    "T".to_string(),
+                    vec![
+                        ProjectionInput::Column(2),
+                        ProjectionInput::Value(TypedValue::Int(0)),
+                        ProjectionInput::Column(0),
+                    ],
+                ),
+            ],
+        };
+
+        assert_eq!(expected_stack, Stack::from(rule))
+    }
+
+    #[test]
     fn from_simple_binary_rule_into_stack() {
         let rule = rule! { T(?x, ?z) <- [T(?x, ?y), T(?y, ?z)] };
 

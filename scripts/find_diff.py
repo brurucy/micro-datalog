@@ -2,7 +2,7 @@ import json
 
 def normalize_tuple(tuple_list):
     # Converts [{"Str": "A"}, {"Str": "B"}] -> tuple of strings ("A", "B")
-    return tuple(item.get("Str", "") for item in tuple_list)
+    return tuple(item.get("Int", "") for item in tuple_list)
 
 def load_results(filename):
     with open(filename, "r") as f:
@@ -31,6 +31,6 @@ def compare_strategies(results):
                 print("  ", t)
 
 if __name__ == "__main__":
-    filename = "./scripts/RDF(_, _, _)_results_20250716_114810.json"  # Change to your actual file path
+    filename = "./results/tc_linear_sparse/tc(_, _)_results_20250721_125059.json"  # Change to your actual file path
     results = load_results(filename)
     compare_strategies(results)

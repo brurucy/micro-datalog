@@ -1,10 +1,10 @@
-use ascent::ascent;
 use chrono::Local;
 use clap::Parser;
 use micro_datalog::args::Args;
 use micro_datalog::benchmark::BenchmarkResult;
 use micro_datalog::benchmark_rdf::run_benchmarks_rdf;
-use micro_datalog::benchmark_tc::run_benchmarks_tc;
+use micro_datalog::benchmark_linear_tc::run_benchmarks_tc_linear;
+use micro_datalog::benchmark_nonlinear_tc::run_benchmarks_tc_nonlinear;
 use micro_datalog::benchmark_university::run_benchmarks_university;
 use micro_datalog::benchmark_university_all::run_benchmarks_university_all;
 use micro_datalog::visualization::visualize_results;
@@ -23,9 +23,15 @@ fn save_benchmark_results(results: &[BenchmarkResult], path: &Path, args: &Args)
     } else if args.rdf {
         std::fs::create_dir_all("results/rdf")?;
         Path::new("results/rdf").join(path)
-    } else if args.tc {
-        std::fs::create_dir_all("results/tc")?;
-        Path::new("results/tc").join(path)
+    } else if args.tc_linear & args.sparse {
+        std::fs::create_dir_all("results/tc_linear_sparse")?;
+        Path::new("results/tc_linear_sparse").join(path)
+    } else if args.tc_linear & args.fb {
+        std::fs::create_dir_all("results/tc_linear_fb")?;
+        Path::new("results/tc_linear_fb").join(path)
+    } else if args.tc_nonlinear {
+        std::fs::create_dir_all("results/tc_nonlinear")?;
+        Path::new("results/tc_nonlinear").join(path)
     } else if args.university {
         std::fs::create_dir_all("results/university")?;
         Path::new("results/university").join(path)
@@ -122,7 +128,7 @@ fn main() -> Result<(), Box<dyn Error>> {
 
         //Run benchmarks and save results
         results = run_benchmarks_rdf(args.batch_size, &args)?;
-    } else if args.tc {
+    } else if args.tc_linear {
         match (args.query_source, args.query_target) {
             (None, Some(tgt)) => {
                 res_path_string = format!("tc(_, {})_results_{}.json", tgt, timestamp);
@@ -138,8 +144,26 @@ fn main() -> Result<(), Box<dyn Error>> {
             }
         }
         results_path = PathBuf::from(&res_path_string);
-        results = run_benchmarks_tc(args.batch_size, &args)?;
-    } else if args.university {
+        results = run_benchmarks_tc_linear(args.batch_size, &args)?;
+    } else if args.tc_nonlinear {
+        match (args.query_source, args.query_target) {
+            (None, Some(tgt)) => {
+                res_path_string = format!("tc(_, {})_results_{}.json", tgt, timestamp);
+            }
+            (Some(src), None) => {
+                res_path_string = format!("tc({}, _)_results_{}.json", src, timestamp);
+            }
+            (Some(src), Some(tgt)) => {
+                res_path_string = format!("tc({}, {})_results_{}.json", src, tgt, timestamp);
+            }
+            (None, None) => {
+                res_path_string = format!("tc(_, _)_results_{}.json", timestamp);
+            }
+        }
+        results_path = PathBuf::from(&res_path_string);
+        results = run_benchmarks_tc_nonlinear(args.batch_size, &args)?;
+    }
+    else if args.university {
         match (args.query_source, args.query_middle, args.query_target) {
             (None, Some(middle), Some(tgt)) => {
                 res_path_string = format!("RDF(_, {}, {})_results_{}.json", middle, tgt, timestamp);
@@ -186,30 +210,30 @@ fn main() -> Result<(), Box<dyn Error>> {
         results_path.display()
     );
 
-    if !args.skip_visualization {
-        // Load results and generate visualizations
-        println!("Generating visualizations...");
-        let results = load_benchmark_results(&results_path)?;
-        // Create visualization options based on selected benchmarks
-        let vis_options = micro_datalog::visualization::VisualizationOptions {
-            show_micro_streaming: args.micro_streaming,
-            show_micro_magic: args.micro_magic,
-            show_micro_tabling: args.micro_tabling,
-            show_crepe: args.crepe,
-            show_ascent: args.ascent,
-            x_scale: None, // Set x-axis from 0 to total edges
-            y_scale_performance: None,
-            y_scale_tuples: None,
-        };
+    // if !args.skip_visualization {
+    //     // Load results and generate visualizations
+    //     println!("Generating visualizations...");
+    //     let results = load_benchmark_results(&results_path)?;
+    //     // Create visualization options based on selected benchmarks
+    //     let vis_options = micro_datalog::visualization::VisualizationOptions {
+    //         show_micro_streaming: args.micro_streaming,
+    //         show_micro_magic: args.micro_magic,
+    //         show_micro_tabling: args.micro_tabling,
+    //         show_crepe: args.crepe,
+    //         show_ascent: args.ascent,
+    //         x_scale: None, // Set x-axis from 0 to total edges
+    //         y_scale_performance: None,
+    //         y_scale_tuples: None,
+    //     };
 
-        visualize_results(
-            &results,
-            vis_dir,
-            &vis_options,
-            results_path.file_name().unwrap().to_str().unwrap(),
-        )?;
-        println!("Visualizations saved to {}", vis_dir.display());
-    }
+    //     visualize_results(
+    //         &results,
+    //         vis_dir,
+    //         &vis_options,
+    //         results_path.file_name().unwrap().to_str().unwrap(),
+    //     )?;
+    //     println!("Visualizations saved to {}", vis_dir.display());
+    // }
 
     Ok(())
 }

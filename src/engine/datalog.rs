@@ -108,7 +108,7 @@ impl MicroRuntime {
             }
         
             Strategy::TopDown => {
-                let evaluator = SubsumptiveEvaluator::new(
+                let mut evaluator = SubsumptiveEvaluator::new(
                     self.processed.clone(),
                     self.unprocessed_insertions.clone(),
                     program,
@@ -116,6 +116,9 @@ impl MicroRuntime {
 
               let (result, evaluation_duration) = evaluator.evaluate_query(query);
               (result, evaluation_duration)
+            }
+            _ => {
+                panic!("Strategy not supported");
             }
         }
     }

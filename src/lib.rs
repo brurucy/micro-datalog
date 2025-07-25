@@ -6,6 +6,7 @@ pub mod helpers;
 pub mod program_transformations;
 pub mod visualization;
 pub mod benchmark_rdf;
-pub mod benchmark_tc;   
+pub mod benchmark_linear_tc;   
+pub mod benchmark_nonlinear_tc;
 pub mod benchmark_university;
 pub mod benchmark_university_all;

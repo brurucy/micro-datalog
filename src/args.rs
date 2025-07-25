@@ -6,8 +6,8 @@ use std::path::PathBuf;
 #[command(author, version, about, long_about = None)]
 pub struct Args {
     /// Number of edges to process
-    #[arg(short, long, default_value_t = 20000)]
-    pub edges: usize,
+    #[arg(short, long)]
+    pub edges: Option<usize>,
 
     /// Batch size for processing edges
     #[arg(short, long, default_value_t = 1000)]
@@ -87,7 +87,11 @@ pub struct Args {
 
     /// Run tc benchmark
     #[arg(long)]
-    pub tc: bool,
+    pub tc_linear: bool,
+
+    /// Run tc benchmark
+    #[arg(long)]
+    pub tc_nonlinear: bool,
 
     /// Run university benchmark
     #[arg(long)]

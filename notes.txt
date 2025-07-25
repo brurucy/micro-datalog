@@ -1,50 +1,30 @@
-% Modified rules
-tc^bbb(?x, ?y, ?z) <- [m_tc^bbb(?x, ?y, ?z), e(?x, ?y), e(?y, ?z), e(?z, ?w)]
-tc^bbb(?x, ?y, ?w) <- [m_tc^bbb(?x, ?y, ?w), tc^bbf(?x, ?y, ?z), tc^bfb(?y, ?z, ?w)]
-
-tc^bbf(?x, ?y, ?z) <- [m_tc^bbf(?x, ?y), e(?x, ?y), e(?y, ?z), e(?z, ?w)]
-tc^bbf(?x, ?y, ?w) <- [m_tc^bbf(?x, ?y), tc^bbf(?x, ?y, ?z), tc^bff(?y, ?z, ?w)]
-
-tc^bfb(?x, ?y, ?z) <- [m_tc^bfb(?x, ?z), e(?x, ?y), e(?y, ?z), e(?z, ?w)]
-tc^bfb(?x, ?y, ?w) <- [m_tc^bfb(?x, ?w), tc^bff(?x, ?y, ?z), tc^ffb(?y, ?z, ?w)]
-
-tc^bff(?x, ?y, ?z) <- [m_tc^bff(?x), e(?x, ?y), e(?y, ?z), e(?z, ?w)]
-tc^bff(?x, ?y, ?w) <- [m_tc^bff(?x), tc^bff(?x, ?y, ?z), tc^fff(?y, ?z, ?w)]
-
-tc^ffb(?x, ?y, ?z) <- [m_tc^ffb(?z), e(?x, ?y), e(?y, ?z), e(?z, ?w)]
-tc^ffb(?x, ?y, ?w) <- [m_tc^ffb(?w), tc^fff(?x, ?y, ?z), tc^ffb(?y, ?z, ?w)]
-
-tc^fff(?x, ?y, ?z) <- [m_tc^fff(), e(?x, ?y), e(?y, ?z), e(?z, ?w)]
-tc^fff(?x, ?y, ?w) <- [m_tc^fff(), tc^fff(?x, ?y, ?z), tc^fff(?y, ?z, ?w)]
-
-% Seed rule
-m_tc^bbb("a", "b", "d") <- []
-
-% Magic rules
-m_tc^bbf(?x, ?y) <- m_tc^bbb(?x, ?y, ?w)
-m_tc^bfb(?y, ?w) <- m_tc^bbb(?x, ?y, ?w), tc^bbf(?x, ?y, ?z)
-
-m_tc^bbf(?x, ?y) <- m_tc^bbf(?x, ?y)
-m_tc^bff(?y) <- [m_tc^bbf(?x, ?y), tc^bbf(?x, ?y, ?z)]
-
-m_tc^bff(?x) <- m_tc^bfb(?x, ?w)
-m_tc^ffb(?w) <- m_tc^bfb(?x, ?w), tc^bff(?x, ?y, ?z)
-
-m_tc^ffb(?w)  <- [tc^fff(?x, ?y, ?z)]
-
-runtime.insert("parent", vec!["john", "bob"]);
-runtime.insert("parent", vec!["bob", "mary"]);
-
-ancestor(?x, ?y) <- [parent(?x, ?y)],
-ancestor(?x, ?z) <- [parent(?x, ?y), ancestor(?y, ?z)]
-
-query: ancestor_bb(john, mary)
-magic seed: magic_ancestor_bb(john, mary)
-
-ancestor_bb(?x, ?y) <- [magic_ancestor_bb(?x, ?y), parent(?x, ?y)],
-ancestor_bb(?x, ?z) <- [magic_ancestor_bb(?x, ?z), parent(?x, ?y), ancestor_bb(?y, ?z)]
-
-magic_ancestor_bb(?y, ?z) <- [magic_ancestor_bb(?x, ?z), parent(?x, ?y)]
+University_b("x") <- [magic_University_bf("x"), hasAlumnus_bf("x", "y")]
+magic_degreeFrom_fb("x") <- [magic_hasAlumnus_bf("x")]
+magic_hasAlumnus_bf("x") <- [magic_University_bf("x")]
+degreeFrom_fb("x", "y") <- [magic_degreeFrom_fb("y"), doctoralDegreeFrom("x", "y")]
+degreeFrom_fb("x", "y") <- [magic_degreeFrom_fb("y"), mastersDegreeFrom("x", "y")]
+degreeFrom_fb("x", "y") <- [magic_degreeFrom_fb("y"), undergraduateDegreeFrom("x", "y")]
+degreeFrom_fb("x", "y") <- [magic_degreeFrom_fb("y"), hasAlumnus_bf("y", "x")]
+hasAlumnus_bf("x", "y") <- [magic_hasAlumnus_bf("x"), degreeFrom_fb("y", "x")]
+University_b("y") <- [magic_University_bf("y"), degreeFrom_fb("x", "y")]
+University_b("y") <- [magic_University_bf("y"), doctoralDegreeFrom("x", "y")]
+University_b("y") <- [magic_University_bf("y"), mastersDegreeFrom("x", "y")]
+University_b("y") <- [magic_University_bf("y"), undergraduateDegreeFrom("x", "y")]
+magic_degreeFrom_fb("y") <- [magic_University_bf("y")]
+magic_hasAlumnus_bf("y") <- [magic_degreeFrom_fb("y")]
 
 
 
+tc(x, y) <- e(x, y)
+tc(x, z) <- tc(x, y), tc(y, z)
+
+tc_bb(x, y) <- magic_tc_bb(x, y), e(x, y)
+tc_bb(x, z) <- magic_tc_bb(x, z), tc_bf(x, y), tc_fb(y, z)
+
+tc_bf(x, z) <- magic_tc_bf(x), tc_bf(x, y), tc_ff(y, z)
+
+tc_fb(x, z) <- magic_tc_fb(z), tc_ff(x, y), tc_fb(y, z)
+
+magic_tc_fb(z) <- magic_tc_fb(z), tc_ff(x, y),
+
+magic_tc_fb("z") <- [magic_tc_fb("z")]

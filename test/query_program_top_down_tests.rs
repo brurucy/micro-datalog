@@ -1,20 +1,20 @@
 #[cfg(test)]
 mod tests {
+    use ascent::*;
     use datalog_rule_macro::program;
     use datalog_syntax::*;
     use micro_datalog::{
         convert_fact_vec,
         engine::datalog::{MicroRuntime, Strategy},
     };
-    use std::{collections::HashSet};
-    use ascent::*;
+    use std::collections::HashSet;
 
     ascent! {
         relation e(String, String);
-        relation tc(String, String, String);
+        relation tc(String, String);
 
-        tc(x, y, z) <-- e(x, y), e(y, z), e(z, w);
-        tc(x, y, w) <-- tc(x, y, z), tc(y, z, w);
+        tc(x, y) <-- e(x, y);
+        tc(x, z) <-- tc(x, y), tc(y, z);
     }
 
     // #[test]
@@ -63,18 +63,16 @@ mod tests {
 
     #[test]
     fn test_query_program_rdf() {
-        let program = program! { 
-            T(?s, ?p, ?o) <- [RDF(?s, ?p, ?o)], 
-            T(?y, ?q, ?x) <- [T(?a, ?q, ?x), T(?y, ?a, ?z)], 
-            T(?z, ?q, ?x) <- [T(?a, ?q, ?x), T(?y, ?a, ?z)], 
-            T(?z, ?q, ?x) <- [T(?a, ?q, ?x), T(?y, ?a, ?z)], 
-            T(?x, ?q, ?z) <- [T(?x, ?q, ?y), T(?y, ?q, ?z)], 
-            T(?x, ?q, ?z) <- [T(?x, ?q, ?y), T(?y, ?q, ?z)], 
-            T(?z, ?q, ?y) <- [T(?x, ?q, ?y), T(?z, ?q, ?x)], 
+        let program = program! {
+            T(?s, ?p, ?o) <- [RDF(?s, ?p, ?o)],
+            T(?y, ?q, ?x) <- [T(?a, ?q, ?x), T(?y, ?a, ?z)],
+            T(?z, ?q, ?x) <- [T(?a, ?q, ?x), T(?y, ?a, ?z)],
+            T(?z, ?q, ?x) <- [T(?a, ?q, ?x), T(?y, ?a, ?z)],
+            T(?x, ?q, ?z) <- [T(?x, ?q, ?y), T(?y, ?q, ?z)],
+            T(?x, ?q, ?z) <- [T(?x, ?q, ?y), T(?y, ?q, ?z)],
+            T(?z, ?q, ?y) <- [T(?x, ?q, ?y), T(?z, ?q, ?x)],
             T(?x, ?b, ?y) <- [T(?a, ?q, ?b), T(?x, ?a, ?y)]
         };
-
-
 
         let mut runtime = MicroRuntime::new(program.clone());
         runtime.insert("RDF", ("a", "b", "c"));
@@ -82,9 +80,7 @@ mod tests {
         let query = build_query!(T("a", "b", _));
         let (results, evaluation_time) = runtime.query_program(&query, program, &Strategy::TopDown);
 
-        let expected: HashSet<_> = vec![("a", "b", "c")]
-            .into_iter()
-            .collect();
+        let expected: HashSet<_> = vec![("a", "b", "c")].into_iter().collect();
 
         println!("results==={:?}", results);
         assert_eq!(true, true);
@@ -178,7 +174,8 @@ mod tests {
 
         // Query for ancestors of john
         let query = build_query!(ancestor(_, "mary"));
-        let (results, _evaluation_time) = runtime.query_program(&query, program, &Strategy::TopDown);
+        let (results, _evaluation_time) =
+            runtime.query_program(&query, program, &Strategy::TopDown);
 
         let expected: HashSet<_> = vec![("bob", "mary"), ("john", "mary")]
             .into_iter()
@@ -202,16 +199,10 @@ mod tests {
         runtime.insert("e", ("c", "d"));
         runtime.insert("e", ("d", "e"));
 
-        let (results, _evaluation_time) = runtime.query_program(
-            &query,
-            program,
-            &Strategy::TopDown,
-        );
+        let (results, _evaluation_time) =
+            runtime.query_program(&query, program, &Strategy::TopDown);
 
-        let expected: HashSet<_> = vec![["a", "b", "d"]]
-            .into_iter()
-            .collect();
-          
+        let expected: HashSet<_> = vec![["a", "b", "d"]].into_iter().collect();
 
         println!("results==={:?}", results);
         //assert_eq!(expected, results);
@@ -233,16 +224,10 @@ mod tests {
         runtime.insert("e", ("c", "d"));
         runtime.insert("e", ("d", "e"));
 
-        let (results, _evaluation_time) = runtime.query_program(
-            &query,
-            program,
-            &Strategy::TopDown,
-        );
+        let (results, _evaluation_time) =
+            runtime.query_program(&query, program, &Strategy::TopDown);
 
-        let expected: HashSet<_> = vec![["a", "b", "d"]]
-            .into_iter()
-            .collect();
-          
+        let expected: HashSet<_> = vec![["a", "b", "d"]].into_iter().collect();
 
         println!("results==={:?}", results);
 
@@ -255,6 +240,89 @@ mod tests {
         ascent_runtime.run();
         println!("ascent_runtime.tc==={:?}", ascent_runtime.tc);
         //assert_eq!(expected, results);
-        assert_eq!(true, true);
+        //assert_eq!(true, true);
+    }
+
+    #[test]
+    fn test_query_program_tc_fb() {
+        let program = program! {
+            tc(?x, ?y) <- [e(?x, ?y)],
+            tc(?x, ?z) <- [tc(?x, ?y), tc(?y, ?z)],
+        };
+        let mut runtime = MicroRuntime::new(program.clone());
+
+        let query = build_query!(tc(_, "d"));
+
+        runtime.insert("e", ("a", "b"));
+        runtime.insert("e", ("b", "c"));
+        runtime.insert("e", ("c", "d"));
+        runtime.insert("e", ("d", "e"));
+
+        let (results, _evaluation_time) =
+            runtime.query_program(&query, program, &Strategy::TopDown);
+
+        let expected: HashSet<_> = vec![("c", "d"), ("b", "d"), ("a", "d")]
+            .into_iter()
+            .collect();
+
+        println!("results==={:?}", results);
+
+        let mut ascent_runtime = AscentProgram::default();
+        ascent_runtime.e.push(("a".to_string(), "b".to_string()));
+        ascent_runtime.e.push(("b".to_string(), "c".to_string()));
+        ascent_runtime.e.push(("c".to_string(), "d".to_string()));
+        ascent_runtime.e.push(("d".to_string(), "e".to_string()));
+
+        ascent_runtime.run();
+        println!("ascent_runtime.tc==={:?}", ascent_runtime.tc);
+        assert_eq!(expected, convert_fact_vec!(results));
+        //assert_eq!(true, true);
+    }
+
+    #[test]
+    fn test_query_program_tc_ff() {
+        let program = program! {
+            tc(?x, ?y) <- [e(?x, ?y)],
+            tc(?x, ?z) <- [e(?x, ?y), tc(?y, ?z)],
+        };
+        let mut runtime = MicroRuntime::new(program.clone());
+
+        let query = build_query!(tc(_, _));
+
+        runtime.insert("e", ("a", "b"));
+        runtime.insert("e", ("b", "c"));
+        runtime.insert("e", ("c", "d"));
+        runtime.insert("e", ("d", "e"));
+
+        let (results, _evaluation_time) =
+            runtime.query_program(&query, program, &Strategy::TopDown);
+
+        let expected: HashSet<_> = vec![
+            ("a", "b"),
+            ("b", "c"),
+            ("c", "d"),
+            ("d", "e"),
+            ("c", "e"),
+            ("b", "d"),
+            ("a", "c"),
+            ("a", "d"),
+            ("b", "e"),
+            ("a", "e"),
+        ]
+        .into_iter()
+        .collect();
+
+        println!("results==={:?}", results);
+
+        let mut ascent_runtime = AscentProgram::default();
+        ascent_runtime.e.push(("a".to_string(), "b".to_string()));
+        ascent_runtime.e.push(("b".to_string(), "c".to_string()));
+        ascent_runtime.e.push(("c".to_string(), "d".to_string()));
+        ascent_runtime.e.push(("d".to_string(), "e".to_string()));
+
+        ascent_runtime.run();
+        println!("ascent_runtime.tc==={:?}", ascent_runtime.tc);
+        assert_eq!(expected, convert_fact_vec!(results));
+        //assert_eq!(true, true);
     }
 }

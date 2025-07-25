@@ -159,52 +159,6 @@ pub fn get_bound_vars_from_adorned_atom(adorned: &AdornedAtom) -> HashSet<String
         .collect()
 }
 
-pub fn load_initial_edges(graph: &RelationStorage, ratio: f64) -> Vec<(String, String)> {
-    let all_edges = graph.get_all_edges("e".to_string());
-    let initial_count = (all_edges.len() as f64 * ratio) as usize;
-
-    let mut rng = rand::thread_rng();
-    let mut edges = all_edges.clone();
-    edges.shuffle(&mut rng);
-
-    edges.drain(0..initial_count).collect()
-}
-
-pub fn load_remaining_edges(graph: &RelationStorage) -> Vec<(String, String)> {
-    let all_edges = graph.get_all_edges("e".to_string());
-    let initial_count = (all_edges.len() as f64 * 0.2) as usize; // 20% initial
-
-    let mut rng = rand::thread_rng();
-    let mut edges = all_edges.clone();
-    edges.shuffle(&mut rng);
-
-    edges.drain(initial_count..).collect()
-}
-
-/// Calculate out-degree for each node in the graph
-pub fn calculate_out_degrees(storage: &RelationStorage, node: String) -> HashMap<String, usize> {
-    let mut degrees = HashMap::new();
-
-    for edge in storage.get_all_edges(node) {
-        let (src, _) = edge;
-        *degrees.entry(src).or_insert(0) += 1;
-    }
-
-    degrees
-}
-
-/// Calculate in-degree for each node in the graph
-pub fn calculate_in_degrees(storage: &RelationStorage, node: String) -> HashMap<String, usize> {
-    let mut degrees = HashMap::new();
-
-    for edge in storage.get_all_edges(node) {
-        let (_, dst) = edge;
-        *degrees.entry(dst).or_insert(0) += 1;
-    }
-
-    degrees
-}
-
 /// Get all unique nodes in the graph
 pub fn get_all_nodes(storage: &RelationStorage, node: String) -> HashSet<String> {
     let mut nodes = HashSet::new();

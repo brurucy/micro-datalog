@@ -143,6 +143,12 @@ cargo run --release -- --micro-magic --micro-tabling
 
 # Combine options
 cargo run --release -- --use-all-data --query-source 1234 --micro-magic --micro-tabling
+
+cargo run --release -- --use-all-data --university --micro-magic --ascent --micro-streaming --arity 2 --query-predicate memberOf --query-source-str UndergraduateStudent0
+
+cargo run --release -- --use-all-data --rdf --micro-magic --ascent --micro-streaming --query-target 34
+
+cargo run -- --use-all-data --tc-linear --ascent --micro-tabling --sparse
 ```
 
 ## Command Line Options
