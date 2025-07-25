@@ -42,42 +42,39 @@ impl<'a> SubsumptiveEvaluator {
         };
         let start = Instant::now();
 
-        let mut seen_queries = HashSet::new();
         let mut table = SubsumptiveTable::new();
         let mut results: Vec<Vec<TypedValue>> = self.evaluate_subquery(
             self.program.clone(),
             &query_atom,
             None,
-            &mut seen_queries,
+            &mut HashSet::new(),
             &mut table,
             None,
             0, // Start with depth 0
         );
 
-        // while !self.unprocessed_subqueries.is_empty() {
-        //     let mut new_unprocessed_subqueries = self.unprocessed_subqueries.clone();
-        //     for (depth, subqueries) in new_unprocessed_subqueries.iter_mut() {
-        //         for (subquery_atom, (subquery_rule, bindings)) in subqueries.iter() {
-        //             let mut subquery_results = HashSet::new();
-        //             let bindings_hacked = HashMap::from([
-        //                 ("z".to_string(), TypedValue::from("d")),
-        //             ]);
-        //             self.evaluate_unprocessed_subquery(
-        //                 subquery_atom,
-        //                 subquery_rule,
-        //                 &bindings_hacked,
-        //                 &mut seen_queries,
-        //                 &mut table,
-        //                 &mut subquery_results,
-        //                 0,
-        //                 depth + 1,
-        //             );
+        while !self.unprocessed_subqueries.is_empty() {
+            let mut new_unprocessed_subqueries = self.unprocessed_subqueries.clone();
+            for (depth, subqueries) in new_unprocessed_subqueries.iter_mut() {
+                for (subquery_atom, (subquery_rule, bindings)) in subqueries.iter() {
+                    let mut subquery_results = HashSet::new();
 
-        //             results.extend(subquery_results);
-        //         }
-        //         self.unprocessed_subqueries.remove(depth);
-        //     }
-        // }
+                    self.evaluate_unprocessed_subquery(
+                        subquery_atom,
+                        subquery_rule,
+                        &bindings,
+                        &mut HashSet::new(),
+                        &mut table,
+                        &mut subquery_results,
+                        0,
+                        depth + 1,
+                    );
+
+                    results.extend(subquery_results);
+                }
+                self.unprocessed_subqueries.remove(depth);
+            }
+        }
         let evaluation_time = start.elapsed();
 
         //Return the results as an iterator
@@ -91,77 +88,69 @@ impl<'a> SubsumptiveEvaluator {
         subquery_rule: Option<&Rule>,
         seen_queries: &mut HashSet<Atom>,
         table: &mut SubsumptiveTable,
-        bindings: Option<HashMap<String, TypedValue>>,
+        cache: Option<(usize, HashMap<String, TypedValue>)>, // (body atom index, bindings)
         depth: usize,
     ) -> Vec<Vec<TypedValue>> {
-        let mut current_subquery_atom: Atom;
+        let mut all_results = HashSet::new();
 
-        if let Some(existing_bindings) = bindings.clone() {
-            let new_subquery_atom_terms = subquery_atom
-                .terms
-                .iter()
-                .map(|term| {
-                    if let Term::Variable(var) = term {
-                        if let Some(bound_value) = existing_bindings.get(var) {
-                            Term::Constant(bound_value.clone())
+        let mut subquery_atom = subquery_atom.clone();
+
+        if let Some(cache) = &cache {
+            let (body_atom_index, cached_rule_bindings) = cache.clone();
+
+            let cached_body_atom = Atom {
+                symbol: subquery_rule.unwrap().body[body_atom_index].symbol.clone(),
+                sign: subquery_rule.unwrap().body[body_atom_index].sign,
+                terms: subquery_rule.unwrap().body[body_atom_index]
+                    .terms
+                    .iter()
+                    .map(|term| {
+                        if let Term::Variable(var) = term {
+                            if let Some(bound_value) = cached_rule_bindings.get(var) {
+                                Term::Constant(bound_value.clone())
+                            } else {
+                                term.clone()
+                            }
                         } else {
                             term.clone()
                         }
-                    } else {
-                        term.clone()
-                    }
-                })
-                .collect();
-
-            current_subquery_atom = Atom {
-                symbol: subquery_atom.symbol.clone(),
-                sign: subquery_atom.sign,
-                terms: new_subquery_atom_terms,
+                    })
+                    .collect(),
             };
-        } else {
-            current_subquery_atom = subquery_atom.clone();
+            subquery_atom = cached_body_atom;
         }
 
-        let mut all_results = HashSet::new();
-        if let Some(cached_results) = table.find_subsuming(&current_subquery_atom) {
+        if let Some(cached_results) = table.find_subsuming(&subquery_atom) {
             return cached_results.iter().cloned().collect();
         }
 
         //Prevent infinite recursion by tracking seen queries
-        if seen_queries.contains(&current_subquery_atom) {
-            println!("================================================");
-            println!("Found seen query {:?}", current_subquery_atom);
-            println!("Subquery rule {:?}", subquery_rule);
-            println!("Depth {:?}", depth);
-            //println!("Bindings {:?}", bindings.unwrap());
-            println!("================================================");
+        if seen_queries.contains(&subquery_atom) {
+            let (body_atom_index, cached_rule_bindings) = cache.unwrap();
+
             self.insert_unprocessed_subquery(
-                &current_subquery_atom,
+                body_atom_index,
                 subquery_rule.unwrap().clone(),
-                HashMap::new(), // TODO: This is a hack to get the subresult set. We should find a better way to do this.
+                cached_rule_bindings.clone(),
                 depth,
             );
 
             return Vec::new();
         }
 
-        seen_queries.insert(current_subquery_atom.clone());
+        seen_queries.insert(subquery_atom.clone());
 
         //First, process base facts (facts in storage)
-        if let Some(facts) = self
-            .unprocessed_insertions
-            .inner
-            .get(&current_subquery_atom.symbol)
-        {
+        if let Some(facts) = self.unprocessed_insertions.inner.get(&subquery_atom.symbol) {
             let matching_facts: HashSet<_> = facts
                 .iter()
                 .filter(|fact| {
-                    fact.iter().zip(current_subquery_atom.terms.iter()).all(
-                        |(val, term)| match term {
+                    fact.iter()
+                        .zip(subquery_atom.terms.iter())
+                        .all(|(val, term)| match term {
                             Term::Constant(bound_val) => val == bound_val,
                             Term::Variable(_) => true,
-                        },
-                    )
+                        })
                 })
                 .map(|arc_fact| (**arc_fact).clone())
                 .collect();
@@ -169,16 +158,16 @@ impl<'a> SubsumptiveEvaluator {
             all_results.extend(matching_facts);
         }
 
-        if let Some(facts) = self.processed.inner.get(&current_subquery_atom.symbol) {
+        if let Some(facts) = self.processed.inner.get(&subquery_atom.symbol) {
             let matching_facts: HashSet<_> = facts
                 .iter()
                 .filter(|fact| {
-                    fact.iter().zip(current_subquery_atom.terms.iter()).all(
-                        |(val, term)| match term {
+                    fact.iter()
+                        .zip(subquery_atom.terms.iter())
+                        .all(|(val, term)| match term {
                             Term::Constant(bound_val) => val == bound_val,
                             Term::Variable(_) => true,
-                        },
-                    )
+                        })
                 })
                 .map(|arc_fact| (**arc_fact).clone())
                 .collect();
@@ -188,7 +177,7 @@ impl<'a> SubsumptiveEvaluator {
 
         //Process each matching rule
         for rule in program.inner.iter() {
-            if rule.head.symbol != current_subquery_atom.symbol {
+            if rule.head.symbol != subquery_atom.symbol {
                 continue;
             }
             let mut rule_results = HashSet::new();
@@ -196,11 +185,7 @@ impl<'a> SubsumptiveEvaluator {
 
             // Check if rule is compatible with subquery
             let mut is_compatible = true;
-            for (rule_term, subquery_term) in rule
-                .head
-                .terms
-                .iter()
-                .zip(current_subquery_atom.terms.iter())
+            for (rule_term, subquery_term) in rule.head.terms.iter().zip(subquery_atom.terms.iter())
             {
                 match (rule_term, subquery_term) {
                     //If rule has a constant, subquery must have the same constant
@@ -228,19 +213,19 @@ impl<'a> SubsumptiveEvaluator {
                 continue;
             }
 
-            if let Some(existing_bindings) = &bindings {
-                new_subquery_terms = new_subquery_terms.iter().map(|term| {
-                    if let Term::Variable(var) = term {
-                        if let Some(bound_value) = existing_bindings.get(var) {
-                            Term::Constant(bound_value.clone())
-                        } else {
-                            term.clone()
-                        }
-                    } else {
-                        term.clone()
-                    }
-                }).collect();
-            }
+            // if let Some(existing_bindings) = &bindings {
+            //     new_subquery_terms = new_subquery_terms.iter().map(|term| {
+            //         if let Term::Variable(var) = term {
+            //             if let Some(bound_value) = existing_bindings.get(var) {
+            //                 Term::Constant(bound_value.clone())
+            //             } else {
+            //                 term.clone()
+            //             }
+            //         } else {
+            //             term.clone()
+            //         }
+            //     }).collect();
+            // }
 
             // if subquery_atom.terms[0] == Term::Variable("x".to_string()) && subquery_atom.terms[1] == Term::Variable("y".to_string()) {
             //     println!("================================================");
@@ -253,9 +238,9 @@ impl<'a> SubsumptiveEvaluator {
             // }
 
             let next_subquery_atom = Atom {
-                symbol: current_subquery_atom.symbol.clone(),
-                sign: current_subquery_atom.sign,
-                terms: new_subquery_terms,
+                symbol: subquery_atom.symbol.clone(), // the same as head of rule
+                sign: subquery_atom.sign,
+                terms: new_subquery_terms, // mixed with head of rule terms
             };
 
             // if next_subquery_atom.terms[0] == Term::Variable("x".to_string()) && next_subquery_atom.terms[1] == Term::Variable("y".to_string()) && depth == 3 {
@@ -271,12 +256,13 @@ impl<'a> SubsumptiveEvaluator {
             self.evaluate_rule_subsumptive(
                 &next_subquery_atom,
                 &rule,
-                bindings.clone(),
+                Some(HashMap::new()),
                 seen_queries,
                 table,
                 &mut rule_results,
                 depth + 1,
             );
+
             all_results.extend(rule_results);
         }
 
@@ -284,17 +270,15 @@ impl<'a> SubsumptiveEvaluator {
         if !all_results.is_empty() {
             println!(
                 "Inserting results for subquery atom {:?} at depth {:?}",
-                current_subquery_atom, depth
+                subquery_atom.clone(),
+                depth
             );
             println!("Results {:?}", all_results);
-            table.insert(
-                &current_subquery_atom,
-                all_results.iter().cloned().collect(),
-            );
+            table.insert(&subquery_atom, all_results.iter().cloned().collect());
         }
 
         //Remove this query from seen set since we're done processing it
-        seen_queries.remove(&current_subquery_atom);
+        seen_queries.remove(&subquery_atom);
         all_results.into_iter().collect()
     }
 
@@ -316,16 +300,26 @@ impl<'a> SubsumptiveEvaluator {
         }
 
         //Initialize bindings from the head pattern
+        // ignoring constants in the head bc we've already checked that they match with the subquery atom
         for (i, arg) in rule.head.terms.iter().enumerate() {
-            if let (Term::Variable(var), Some(Term::Constant(val))) =
-                (arg, subquery_atom.terms.get(i))
+            if let (Term::Variable(var), Term::Constant(val)) =
+                (arg, subquery_atom.terms[i].clone())
             {
                 new_bindings.insert(var.clone(), val.clone());
             }
         }
 
+        if new_bindings.len() == 0 {
+            println!("================================================");
+            println!("Evaluating rule {:?}", rule);
+            println!("Subquery atom {:?}", subquery_atom);
+            println!("New bindings {:?}", new_bindings);
+            println!("Depth {:?}", depth);
+            println!("================================================");
+        }
+
         //Evaluate each body atom in sequence
-        self.evaluate_body(
+        self.evaluate_rule_body(
             &rule,
             0,
             &mut new_bindings,
@@ -336,11 +330,11 @@ impl<'a> SubsumptiveEvaluator {
         );
     }
 
-    fn evaluate_body(
+    fn evaluate_rule_body(
         &mut self,
         subquery_rule: &Rule,
         pos: usize,
-        bindings: &mut HashMap<String, TypedValue>,
+        rule_bindings: &mut HashMap<String, TypedValue>,
         seen_queries: &mut HashSet<Atom>,
         table: &mut SubsumptiveTable,
         results: &mut HashSet<AnonymousGroundAtom>,
@@ -351,13 +345,13 @@ impl<'a> SubsumptiveEvaluator {
 
         // Base case: all body atoms have been processed
         if pos >= body.len() {
-            if let Some(result) = create_result(head, bindings) {
+            if let Some(result) = create_result(head, rule_bindings) {
                 results.insert(result);
             }
             return;
         }
 
-        let subquery_atom = Atom {
+        let body_atom = Atom {
             symbol: body[pos].symbol.clone(),
             sign: body[pos].sign,
             terms: body[pos]
@@ -365,7 +359,7 @@ impl<'a> SubsumptiveEvaluator {
                 .iter()
                 .map(|term| match term {
                     Term::Variable(var) => {
-                        if let Some(bound_value) = bindings.get(var) {
+                        if let Some(bound_value) = rule_bindings.get(var) {
                             Term::Constant(bound_value.clone())
                         } else {
                             term.clone()
@@ -378,76 +372,106 @@ impl<'a> SubsumptiveEvaluator {
 
         let mut subresults: Vec<Vec<TypedValue>> = Vec::new();
 
-        if is_derived_predicate(&self.program, &subquery_atom.symbol) {
-        
-                println!("================================================");
-                println!("Evaluating derived predicate {:?}", subquery_atom);
-                println!("Bindings {:?}", bindings);
-                println!("Subquery rule {:?}", subquery_rule);
-                println!("Pos {:?}", pos);
-                println!("Results {:?}", results);
-                println!("Depth {:?}", depth);
-                println!("================================================");
-            
-
+        if is_derived_predicate(&self.program, &body_atom.symbol) {
             // we moving out of this rule
             let new_query_atom = Atom {
-                symbol: subquery_atom.symbol.clone(),
-                sign: subquery_atom.sign,
-                terms: subquery_atom.terms.iter().map(|term| 
-                    match term {
+                symbol: body_atom.symbol.clone(),
+                sign: body_atom.sign,
+                terms: body_atom
+                    .terms
+                    .iter()
+                    .map(|term| match term {
                         Term::Variable(var) => {
-                            if let Some(bound_value) = bindings.get(var) {
+                            if let Some(bound_value) = rule_bindings.get(var) {
                                 Term::Constant(bound_value.clone())
                             } else {
-                            Term::Variable("_".to_string())
+                                Term::Variable("_".to_string())
+                            }
                         }
-                    },
-                    Term::Constant(_) => term.clone(),
-                }).collect()
+                        Term::Constant(_) => term.clone(),
+                    })
+                    .collect(),
             };
 
+            if rule_bindings.len() == 0 {
+                println!("================================================");
+                println!("Evaluating derived predicate {:?}", body_atom);
+                println!("Subquery rule {:?}", subquery_rule);
+                println!("Pos {:?}", pos);
+                println!("Rule bindings {:?}", rule_bindings);
+                println!("Depth {:?}", depth);
+                println!("================================================");
+            }
             subresults = self.evaluate_subquery(
                 self.program.clone(),
                 &new_query_atom,
                 Some(subquery_rule),
                 seen_queries,
                 table,
-                None,
+                Some((pos, rule_bindings.clone())),
                 depth + 1,
             );
 
-            subresults = subresults
-                .iter()
-                .filter(|subresult| {
-                    subresult.iter().enumerate().all(|(i, res)| {
-                        match &subquery_atom.terms[i] {
-                            Term::Constant(atom_val) => res == atom_val,
-                            Term::Variable(_) => true,
+            let head_atom = Atom {
+                symbol: subquery_rule.head.symbol.clone(),
+                sign: subquery_rule.head.sign,
+                terms: subquery_rule
+                    .head
+                    .terms
+                    .iter()
+                    .map(|term| match term {
+                        Term::Variable(var) => {
+                            if let Some(bound_value) = rule_bindings.get(var) {
+                                Term::Constant(bound_value.clone())
+                            } else {
+                                Term::Variable("_".to_string())
+                            }
                         }
+                        Term::Constant(_) => term.clone(),
                     })
-                })
-                .cloned()
-                .collect();
+                    .collect(),
+            };
 
+            println!("================================================");
+            println!("Head atom {:?}", head_atom);
+            println!("Subresults {:?}", subresults);
+            println!("Rule bindings {:?}", rule_bindings);
+            println!("Depth {:?}", depth);
+            println!("Pos {:?}", pos);
+            println!("Subquery rule {:?}", subquery_rule);
+            println!("Body atom {:?}", body_atom);
+            println!("New query atom {:?}", new_query_atom);
+            println!("================================================");
 
+            // subresults = subresults
+            //     .iter()
+            //     .filter(|subresult| {
+            //         subresult
+            //             .iter()
+            //             .enumerate()
+            //             .all(|(i, res)| match &head_atom.terms[i] {
+            //                 Term::Constant(atom_val) => res == atom_val,
+            //                 Term::Variable(_) => true,
+            //             })
+            //     })
+            //     .cloned()
+            //     .collect();
         } else {
-            subresults = self
-                .match_base_predicate(&subquery_atom)
-                .into_iter()
-                .collect();
-         
+            subresults = self.match_base_predicate(&body_atom).into_iter().collect();
         }
 
         for subresult in subresults {
-            let mut new_bindings = bindings.clone();
+            let mut updated_bindings = rule_bindings.clone();
             let subresult_set = HashSet::from_iter(vec![subresult.clone()]);
-            update_bindings(&mut new_bindings, &subquery_atom, &subresult_set);
+            update_bindings(&mut updated_bindings, &body_atom, &subresult_set);
 
-            self.evaluate_body(
+            if updated_bindings.len() == 0 {
+                println!("================================================");
+            }
+            self.evaluate_rule_body(
                 subquery_rule,
                 pos + 1,
-                &mut new_bindings,
+                &mut updated_bindings,
                 seen_queries,
                 table,
                 results,
@@ -467,22 +491,35 @@ impl<'a> SubsumptiveEvaluator {
         pos: usize,
         depth: usize,
     ) -> () {
-        let subresults = self.evaluate_subquery(
+        let mut subresults = self.evaluate_subquery(
             self.program.clone(),
             &subquery_atom,
             Some(subquery_rule),
             seen_queries,
             table,
-            Some(bindings.clone()),
+            Some((pos, bindings.clone())),
             depth,
         );
 
+        subresults = subresults
+            .iter()
+            .filter(|subresult| {
+                subresult
+                    .iter()
+                    .enumerate()
+                    .all(|(i, res)| match &subquery_atom.terms[i] {
+                        Term::Constant(atom_val) => res == atom_val,
+                        Term::Variable(_) => true,
+                    })
+            })
+            .cloned()
+            .collect();
+
         for subresult in subresults {
             let mut new_bindings = bindings.clone();
-            // TODO: This is a hack to get the subresult set. We should find a better way to do this.
             let subresult_set = HashSet::from_iter(vec![subresult.clone()]);
             update_bindings(&mut new_bindings, &subquery_atom, &subresult_set);
-            self.evaluate_body(
+            self.evaluate_rule_body(
                 subquery_rule,
                 pos + 1,
                 &mut new_bindings,
@@ -492,6 +529,14 @@ impl<'a> SubsumptiveEvaluator {
                 depth,
             );
         }
+        println!("================================================");
+        println!("Evaluated unprocessed subquery {:?}", subquery_atom);
+        println!("Subquery rule {:?}", subquery_rule);
+        println!("Bindings {:?}", bindings);
+        println!("Pos {:?}", pos);
+        println!("Depth {:?}", depth);
+        println!("Results {:?}", results);
+        println!("================================================");
     }
 
     fn match_base_predicate(&self, atom: &Atom) -> HashSet<AnonymousGroundAtom> {
@@ -536,7 +581,7 @@ impl<'a> SubsumptiveEvaluator {
 
     fn insert_unprocessed_subquery(
         &mut self,
-        subquery_atom: &Atom,
+        body_atom_index: usize,
         subquery_rule: Rule,
         bindings: HashMap<String, TypedValue>,
         depth: usize,
@@ -547,7 +592,10 @@ impl<'a> SubsumptiveEvaluator {
             .entry(depth)
             .or_insert_with(HashMap::new);
         // Insert the subquery_atom and its bindings
-        atoms_at_depth.insert(subquery_atom.clone(), (subquery_rule, bindings.clone()));
+        atoms_at_depth.insert(
+            subquery_rule.body[body_atom_index].clone(),
+            (subquery_rule, bindings.clone()),
+        );
     }
 }
 

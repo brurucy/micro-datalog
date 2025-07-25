@@ -244,7 +244,7 @@ mod tests {
     }
 
     #[test]
-    fn test_query_program_tc_fb() {
+    fn test_query_program_tc_nonlinear_fb() {
         let program = program! {
             tc(?x, ?y) <- [e(?x, ?y)],
             tc(?x, ?z) <- [tc(?x, ?y), tc(?y, ?z)],
@@ -271,7 +271,7 @@ mod tests {
         ascent_runtime.e.push(("a".to_string(), "b".to_string()));
         ascent_runtime.e.push(("b".to_string(), "c".to_string()));
         ascent_runtime.e.push(("c".to_string(), "d".to_string()));
-        ascent_runtime.e.push(("d".to_string(), "e".to_string()));
+        //ascent_runtime.e.push(("d".to_string(), "e".to_string()));
 
         ascent_runtime.run();
         println!("ascent_runtime.tc==={:?}", ascent_runtime.tc);
@@ -280,10 +280,45 @@ mod tests {
     }
 
     #[test]
-    fn test_query_program_tc_ff() {
+    fn test_query_program_tc_linear_fb() {
         let program = program! {
             tc(?x, ?y) <- [e(?x, ?y)],
             tc(?x, ?z) <- [e(?x, ?y), tc(?y, ?z)],
+        };
+        let mut runtime = MicroRuntime::new(program.clone());
+
+        let query = build_query!(tc(_, "d"));
+
+        runtime.insert("e", ("a", "b"));
+        runtime.insert("e", ("b", "c"));
+        runtime.insert("e", ("c", "d"));
+        runtime.insert("e", ("d", "e"));
+
+        let (results, _evaluation_time) =
+            runtime.query_program(&query, program, &Strategy::TopDown);
+
+        let expected: HashSet<_> = vec![("c", "d"), ("b", "d"), ("a", "d")]
+            .into_iter()
+            .collect();
+
+        println!("results==={:?}", results);
+
+        let mut ascent_runtime = AscentProgram::default();
+        ascent_runtime.e.push(("a".to_string(), "b".to_string()));
+        ascent_runtime.e.push(("b".to_string(), "c".to_string()));
+        ascent_runtime.e.push(("c".to_string(), "d".to_string()));
+        //ascent_runtime.e.push(("d".to_string(), "e".to_string()));
+
+        ascent_runtime.run();
+        println!("ascent_runtime.tc==={:?}", ascent_runtime.tc);
+        assert_eq!(expected, convert_fact_vec!(results));
+    }
+
+    #[test]
+    fn test_query_program_tc_nonlinear_ff() {
+        let program = program! {
+            tc(?x, ?y) <- [e(?x, ?y)],
+            tc(?x, ?z) <- [tc(?x, ?y), tc(?y, ?z)],
         };
         let mut runtime = MicroRuntime::new(program.clone());
 
