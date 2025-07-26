@@ -1,4 +1,5 @@
 use std::collections::{HashMap, HashSet};
+use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use crate::engine::storage::RelationStorage;
@@ -40,10 +41,17 @@ impl<'a> SubsumptiveEvaluator {
                 .collect(),
             sign: true,
         };
+        let mut table = SubsumptiveTable::new();
+        let mut all_results = HashSet::new();
+        let mut iteration = 0;
+
         let start = Instant::now();
 
-        let mut table = SubsumptiveTable::new();
-        let mut results: Vec<Vec<TypedValue>> = self.evaluate_subquery(
+        //loop {
+        iteration += 1;
+        let mut round_results = HashSet::new();
+
+        let results: Vec<Vec<TypedValue>> = self.evaluate_subquery(
             self.program.clone(),
             &query_atom,
             None,
@@ -54,32 +62,68 @@ impl<'a> SubsumptiveEvaluator {
             false,
         );
 
-        // while !self.unprocessed_subqueries.is_empty() {
-        //     let mut new_unprocessed_subqueries = self.unprocessed_subqueries.clone();
-        //     for (depth, subqueries) in new_unprocessed_subqueries.iter_mut() {
-        //         for (subquery_atom, (subquery_rule, bindings)) in subqueries.iter() {
-        //             let mut subquery_results = HashSet::new();
+        //println!("Unprocessed subqueries {:?}", self.unprocessed_subqueries);
 
-        //             self.evaluate_unprocessed_subquery(
-        //                 subquery_atom,
-        //                 subquery_rule,
-        //                 &bindings,
-        //                 &mut HashSet::new(),
-        //                 &mut table,
-        //                 &mut subquery_results,
-        //                 0,
-        //                 depth + 1,
-        //             );
+        round_results.extend(results.into_iter().map(|r| r));
 
-        //             results.extend(subquery_results);
-        //         }
-        //         self.unprocessed_subqueries.remove(depth);
-        //     }
+        while !self.unprocessed_subqueries.is_empty() {
+            let mut new_unprocessed_subqueries = self.unprocessed_subqueries.clone();
+            for (depth, subqueries) in new_unprocessed_subqueries.iter_mut() {
+                for (subquery_atom, (subquery_rule, bindings)) in subqueries.iter() {
+                    let mut subquery_results = HashSet::new();
+
+                    self.evaluate_unprocessed_subquery(
+                        subquery_atom,
+                        subquery_rule,
+                        &bindings,
+                        &mut HashSet::new(),
+                        &mut table,
+                        &mut subquery_results,
+                        0,
+                        depth + 1,
+                    );
+
+                    round_results.extend(subquery_results);
+                }
+                self.unprocessed_subqueries.remove(depth);
+            }
+        }
+
+        // Check for convergence
+        let previous_size = all_results.len();
+        all_results.extend(round_results);
+
+        // if all_results.len() == previous_size {
+        //     break; // Fixed point reached
         // }
-        let evaluation_time = start.elapsed();
 
+        let arc_facts: Vec<Arc<AnonymousGroundAtom>> = all_results
+            .iter()
+            .map(|fact| Arc::new(fact.clone()))
+            .collect();
+
+        self.processed
+            .insert_all(&query_atom.symbol, arc_facts.into_iter());
+
+        println!("Subsumptive table at iteration {:?}", iteration);
+        for (atom, facts) in table.tables.iter() {
+            println!("Atom {:?}", atom);
+            for fact in facts {
+                println!("Subquery {:?}", fact.0);
+                for tuples in fact.1.iter() {
+                    println!("{:?}", tuples);
+                }
+                //println!("Fact {:?}", fact);
+            }
+        }
+
+        //}
+        let evaluation_time = start.elapsed();
+        let final_results = self.filter_results_for_query(all_results.into_iter().collect(), query);
+
+        //println!("Subsumptive table {:?}", table);
         //Return the results as an iterator
-        return (results, evaluation_time);
+        return (final_results, evaluation_time);
     }
 
     pub fn evaluate_subquery(
@@ -93,6 +137,10 @@ impl<'a> SubsumptiveEvaluator {
         depth: usize,
         is_unprocessed: bool,
     ) -> Vec<Vec<TypedValue>> {
+        //println!("Evaluating subquery {:?}", subquery_atom);
+        if depth > 20 {
+            return Vec::new();
+        }
         let mut all_results = HashSet::new();
 
         let mut subquery_atom = subquery_atom.clone();
@@ -119,12 +167,6 @@ impl<'a> SubsumptiveEvaluator {
                     })
                     .collect(),
             };
-            // println!("================================================");
-            // println!("Cached body atom {:?}", cached_body_atom);
-            // println!("Cached rule bindings {:?}", cached_rule_bindings);
-            // println!("Cached rule {:?}", subquery_rule.unwrap());
-            // println!("Cached depth {:?}", depth);
-            // println!("================================================");
             subquery_atom = cached_body_atom;
         }
 
@@ -146,9 +188,13 @@ impl<'a> SubsumptiveEvaluator {
 
         //Prevent infinite recursion by tracking seen queries
         if seen_queries.contains(&subquery_atom) {
-
             let (body_atom_index, cached_rule_bindings) = cache.unwrap();
-// this should only happen in the unprocessed subqueries?
+            // this should only happen in the unprocessed subqueries?
+            // println!("Inserting unprocessed subquery {:?}", subquery_atom);
+            // println!("Body atom index {:?}", body_atom_index);
+            // println!("Cached rule bindings {:?}", cached_rule_bindings);
+            // println!("Depth {:?}", depth);
+            // println!("Subquery rule {:?}", subquery_rule.unwrap());
             self.insert_unprocessed_subquery(
                 body_atom_index,
                 subquery_rule.unwrap().clone(),
@@ -264,9 +310,6 @@ impl<'a> SubsumptiveEvaluator {
                 terms: new_subquery_terms.clone(), // mixed with head of rule terms
             };
 
-
-       
-
             self.evaluate_rule_subsumptive(
                 &next_subquery_atom,
                 &rule,
@@ -324,7 +367,6 @@ impl<'a> SubsumptiveEvaluator {
                 new_bindings.insert(var.clone(), val.clone());
             }
         }
-
 
         //Evaluate each body atom in sequence
         self.evaluate_rule_body(
@@ -385,25 +427,25 @@ impl<'a> SubsumptiveEvaluator {
         if is_derived_predicate(&self.program, &body_atom.symbol) {
             // we moving out of this rule
 
-            let head_atom = Atom {
-                symbol: subquery_rule.head.symbol.clone(),
-                sign: subquery_rule.head.sign,
-                terms: subquery_rule
-                    .head
-                    .terms
-                    .iter()
-                    .map(|term| match term {
-                        Term::Variable(var) => {
-                            if let Some(bound_value) = rule_bindings.get(var) {
-                                Term::Constant(bound_value.clone())
-                            } else {
-                                term.clone()
-                            }
-                        }
-                        Term::Constant(_) => term.clone(),
-                    })
-                    .collect(),
-            };
+            // let head_atom = Atom {
+            //     symbol: subquery_rule.head.symbol.clone(),
+            //     sign: subquery_rule.head.sign,
+            //     terms: subquery_rule
+            //         .head
+            //         .terms
+            //         .iter()
+            //         .map(|term| match term {
+            //             Term::Variable(var) => {
+            //                 if let Some(bound_value) = rule_bindings.get(var) {
+            //                     Term::Constant(bound_value.clone())
+            //                 } else {
+            //                     term.clone()
+            //                 }
+            //             }
+            //             Term::Constant(_) => term.clone(),
+            //         })
+            //         .collect(),
+            // };
 
             let new_query_atom = Atom {
                 symbol: body_atom.symbol.clone(),
@@ -423,21 +465,20 @@ impl<'a> SubsumptiveEvaluator {
                     })
                     .collect(),
             };
-         
+
             subresults = self.evaluate_subquery(
                 self.program.clone(),
                 &new_query_atom,
                 Some(subquery_rule),
                 seen_queries,
                 table,
-               Some((pos, rule_bindings.clone())),
-    
+                Some((pos, rule_bindings.clone())),
                 depth + 1,
                 is_unprocessed,
             );
-        } else {
-            subresults = self.match_base_predicate(&body_atom).into_iter().collect();
         }
+
+        subresults.extend(self.match_base_predicate(&body_atom));
 
         for subresult in subresults {
             let mut updated_bindings = rule_bindings.clone();
@@ -479,7 +520,7 @@ impl<'a> SubsumptiveEvaluator {
             true,
         );
 
-        println!("ALL unprocessed subresults {:?}", subresults);
+        //println!("ALL unprocessed subresults {:?}", subresults);
 
         subresults = subresults
             .iter()
@@ -510,14 +551,14 @@ impl<'a> SubsumptiveEvaluator {
                 false, //not sure TODO
             );
         }
-        println!("================================================");
-        println!("Evaluated unprocessed subquery {:?}", subquery_atom); // tc("x", "y")
-        println!("Subquery rule {:?}", subquery_rule); // tc("x", "z") <- [tc("x", "y"), tc("y", "z")]
-        println!("Bindings {:?}", bindings); //this should have bindings
-        println!("Pos {:?}", pos); //0
-        println!("Depth {:?}", depth); // 7
-        println!("Results {:?}", results); // should be w.o bindings [("a", "b"), ("b", "c"), ("c", "d"), ("a", "c"), ("b", "d"), ("a", "d")]
-        println!("================================================");
+        // println!("================================================");
+        // println!("Evaluated unprocessed subquery {:?}", subquery_atom); // tc("x", "y")
+        // println!("Subquery rule {:?}", subquery_rule); // tc("x", "z") <- [tc("x", "y"), tc("y", "z")]
+        // println!("Bindings {:?}", bindings); //this should have bindings
+        // println!("Pos {:?}", pos); //0
+        // println!("Depth {:?}", depth); // 7
+        // println!("Results {:?}", results); // should be w.o bindings [("a", "b"), ("b", "c"), ("c", "d"), ("a", "c"), ("b", "d"), ("a", "d")]
+        // println!("================================================");
     }
 
     fn match_base_predicate(&self, atom: &Atom) -> HashSet<AnonymousGroundAtom> {
@@ -577,6 +618,21 @@ impl<'a> SubsumptiveEvaluator {
             subquery_rule.body[body_atom_index].clone(),
             (subquery_rule, bindings.clone()),
         );
+    }
+
+    fn filter_results_for_query(
+        &self,
+        results: Vec<Vec<TypedValue>>,
+        query: &Query,
+    ) -> Vec<Vec<TypedValue>> {
+        results
+            .into_iter()
+            .filter(|result| {
+                // Use existing pattern_match function
+                use crate::evaluation::query::pattern_match;
+                pattern_match(query, result)
+            })
+            .collect()
     }
 }
 

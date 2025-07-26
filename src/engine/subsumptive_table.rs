@@ -4,9 +4,9 @@ use crate::helpers::subsumptive_helpers::{
     subsumes
 };
 
-#[derive(Default)]
+#[derive(Default, Debug)]
 pub struct SubsumptiveTable {
-    tables: HashMap<String, Vec<(Atom, Vec<AnonymousGroundAtom>)>>,
+    pub tables: HashMap<String, Vec<(Atom, Vec<AnonymousGroundAtom>)>>,
 }
 
 impl SubsumptiveTable {
