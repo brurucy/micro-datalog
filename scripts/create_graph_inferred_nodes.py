@@ -60,6 +60,11 @@ def read_nodes_from_file(file_path):
         print(f"Error reading important nodes file: {e}")
         sys.exit(1)
 
+"""
+edges_file: materialised results
+important_edges_file: all edges from the processed relation storage after the evaluation is done
+query_nodes_file: bound values in the query
+"""
 def create_and_visualize_graph(edges_file, important_edges_file, query_nodes_file, output_file=None):
     # Read data
     print("Reading edges...")
