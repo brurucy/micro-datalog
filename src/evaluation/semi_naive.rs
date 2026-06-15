@@ -46,11 +46,28 @@ mod test {
         });
     }
 
+    fn register_relations(storage: &mut RelationStorage, names: &[&str]) {
+        for name in names {
+            storage.inner.insert(name.to_string(), Default::default());
+        }
+    }
+
+    fn collect_relation(storage: &RelationStorage, name: &str) -> HashSet<AnonymousGroundAtom> {
+        storage
+            .get_relation(name)
+            .into_iter()
+            .map(|x| (**x).clone())
+            .collect()
+    }
+
+    // ========================================================================
+    // Existing positive tests (unchanged)
+    // ========================================================================
+
     #[test]
     fn test_one_hop() {
         let mut storage: RelationStorage = Default::default();
-        storage.inner.insert("e".to_string(), Default::default());
-        storage.inner.insert("hop".to_string(), Default::default());
+        register_relations(&mut storage, &["e", "hop"]);
         insert_into(
             &mut storage,
             "e",
@@ -64,21 +81,14 @@ mod test {
             .into_iter()
             .collect();
         semi_naive_evaluation(&mut storage, &nonrecursive_delta_program, &recursive_delta_program);
-        let actual: HashSet<_> = storage
-            .get_relation("hop")
-            .into_iter()
-            .map(|x| (**x).clone())
-            .collect();
 
-        assert_eq!(expected, actual);
+        assert_eq!(expected, collect_relation(&storage, "hop"));
     }
 
     #[test]
     fn test_linear_tc() {
         let mut storage: RelationStorage = Default::default();
-        storage.inner.insert("e".to_string(), Default::default());
-        storage.inner.insert("tc".to_string(), Default::default());
-
+        register_relations(&mut storage, &["e", "tc"]);
         insert_into(
             &mut storage,
             "e",
@@ -97,36 +107,24 @@ mod test {
         let (nonrecursive_delta_program, recursive_delta_program) = split_program(tc_program);
 
         let expected: HashSet<AnonymousGroundAtom> = vec![
-            // First iter
             vec!["a".into(), "b".into()],
             vec!["b".into(), "c".into()],
             vec!["c".into(), "d".into()],
-            // Second iter
             vec!["a".into(), "c".into()],
             vec!["b".into(), "d".into()],
-            // Third iter
             vec!["a".into(), "d".into()]
         ]
             .into_iter()
             .collect();
-
         semi_naive_evaluation(&mut storage, &nonrecursive_delta_program, &recursive_delta_program);
 
-        let actual: HashSet<_> = storage
-            .get_relation("tc")
-            .into_iter()
-            .map(|x| (**x).clone())
-            .collect();
-
-        assert_eq!(expected, actual);
+        assert_eq!(expected, collect_relation(&storage, "tc"));
     }
 
     #[test]
     fn test_nonlinear_tc() {
         let mut storage: RelationStorage = Default::default();
-        storage.inner.insert("e".to_string(), Default::default());
-        storage.inner.insert("tc".to_string(), Default::default());
-
+        register_relations(&mut storage, &["e", "tc"]);
         insert_into(
             &mut storage,
             "e",
@@ -145,26 +143,53 @@ mod test {
         let (nonrecursive_delta_program, recursive_delta_program) = split_program(tc_program);
 
         let expected: HashSet<AnonymousGroundAtom> = vec![
-            // First iter
             vec!["a".into(), "b".into()],
             vec!["b".into(), "c".into()],
             vec!["c".into(), "d".into()],
-            // Second iter
             vec!["a".into(), "c".into()],
             vec!["b".into(), "d".into()],
-            // Third iter
             vec!["a".into(), "d".into()]
         ]
             .into_iter()
             .collect();
         semi_naive_evaluation(&mut storage, &nonrecursive_delta_program, &recursive_delta_program);
 
-        let actual: HashSet<_> = storage
-            .get_relation("tc")
-            .into_iter()
-            .map(|x| (**x).clone())
-            .collect();
-
-        assert_eq!(expected, actual);
+        assert_eq!(expected, collect_relation(&storage, "tc"));
     }
+
+    // ========================================================================
+    // Cross product tests
+    // ========================================================================
+
+    #[test]
+    fn test_cross_product() {
+        // pair(X, Y) <- p(X), q(Y)  — no shared variables, cross product
+        let mut storage: RelationStorage = Default::default();
+        register_relations(&mut storage, &["p", "q", "pair"]);
+        insert_into(&mut storage, "p", vec![
+            vec!["a".into()], vec!["b".into()],
+        ]);
+        insert_into(&mut storage, "q", vec![
+            vec!["1".into()], vec!["2".into()], vec!["3".into()],
+        ]);
+
+        let prog = program! {
+            pair(?x, ?y) <- [p(?x), q(?y)]
+        };
+        let (nonrecursive, recursive) = split_program(prog);
+        semi_naive_evaluation(&mut storage, &nonrecursive, &recursive);
+
+        let result = collect_relation(&storage, "pair");
+        // Should be full cross product: 2 × 3 = 6 pairs
+        let expected: HashSet<AnonymousGroundAtom> = vec![
+            vec!["a".into(), "1".into()],
+            vec!["a".into(), "2".into()],
+            vec!["a".into(), "3".into()],
+            vec!["b".into(), "1".into()],
+            vec!["b".into(), "2".into()],
+            vec!["b".into(), "3".into()],
+        ].into_iter().collect();
+        assert_eq!(expected, result);
+    }
+
 }

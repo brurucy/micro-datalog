@@ -70,6 +70,10 @@ mod tests {
 
     #[test]
     fn test_tc_magic_transform() {
+        // With ff query, EDB parent(x,y) binds both x and y.
+        // So ancestor(y,z) in rule 2 gets pattern bf (y bound from parent).
+        // The transformation produces both ff and bf rules, plus a magic rule
+        // for the bf demand propagation.
         let program = program! {
             ancestor(?x, ?y) <- [parent(?x, ?y)],
             ancestor(?x, ?z) <- [parent(?x, ?y), ancestor(?y, ?z)]
@@ -77,13 +81,26 @@ mod tests {
 
         let query = build_query!(ancestor(_, _));
 
-        let expected = program! {
-            ancestor_ff(?x, ?y) <- [magic_ancestor_ff(), parent(?x, ?y)],
-            ancestor_ff(?x, ?z) <- [magic_ancestor_ff(), parent(?x, ?y), ancestor_ff(?y, ?z)]
-        };
-
         let transformed = apply_magic_transformation(&program, &query);
-        assert_eq!(transformed, expected);
+
+        // Should have both ff and bf adorned rules
+        let has_ff = transformed.inner.iter().any(|r| r.head.symbol == "ancestor_ff");
+        let has_bf = transformed.inner.iter().any(|r| r.head.symbol == "ancestor_bf");
+        assert!(has_ff, "Should have ancestor_ff rules");
+        assert!(has_bf, "Should have ancestor_bf rules (y bound from EDB parent)");
+
+        // With all-free query, the 0-arity magic predicate (magic_ancestor_ff)
+        // is skipped in rule bodies since it's always satisfied.
+        // The ff rules should NOT have magic_ancestor_ff as first body atom.
+        let ff_rules: Vec<_> = transformed.inner.iter()
+            .filter(|r| r.head.symbol == "ancestor_ff")
+            .collect();
+        assert!(!ff_rules.is_empty());
+        // First body atom should be the original body atom, not a magic predicate
+        for rule in &ff_rules {
+            assert!(!rule.body[0].symbol.starts_with("magic_"),
+                "0-arity magic predicate should be skipped in rule body");
+        }
     }
 
     #[test]

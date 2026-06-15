@@ -11,6 +11,41 @@ pub fn get_rules_for_predicate<'a>(program: &'a Program, pred_symbol: &str) -> V
         .collect()
 }
 
+/// Compute bound variable names for a SPECIFIC rule, given a positional adornment.
+/// The adorned_head stores variable names from the first rule's head, which may differ
+/// from the current rule's head. This maps the adornment positionally through
+/// the given rule's actual head terms.
+pub fn get_bound_vars_for_rule(rule: &Rule, adornment: &[Adornment]) -> HashSet<String> {
+    rule.head
+        .terms
+        .iter()
+        .zip(adornment.iter())
+        .filter_map(|(term, ad)| match (term, ad) {
+            (Term::Variable(var), Adornment::Bound) => Some(var.clone()),
+            _ => None,
+        })
+        .collect()
+}
+
+/// Build the initial magic predicate for the binding chain, using the current rule's
+/// head variable names (not the adorned atom's stored variable names).
+pub fn make_magic_predicate_for_rule(rule: &Rule, adorned_head: &AdornedAtom) -> Atom {
+    let bound_terms: Vec<Term> = rule
+        .head
+        .terms
+        .iter()
+        .zip(adorned_head.adornment.iter())
+        .filter(|(_, ad)| matches!(ad, Adornment::Bound))
+        .map(|(term, _)| term.clone())
+        .collect();
+
+    Atom {
+        symbol: make_magic_predicate_name(adorned_head),
+        terms: bound_terms,
+        sign: true,
+    }
+}
+
 pub fn is_derived_predicate(program: &Program, pred_symbol: &str) -> bool {
     program
         .inner
@@ -57,21 +92,11 @@ pub fn compute_bound_vars_at_position(
         let atom = &rule.body[i];
 
         if !is_derived_predicate(program, &atom.symbol) {
-            // For base predicates like flat
-            let connects_to_bound = atom.terms.iter().any(|term| {
+            // For base (EDB) predicates: all their variables become bound
+            // after processing, since their facts are fully materialized.
+            for term in &atom.terms {
                 if let Term::Variable(var) = term {
-                    let is_bound = bound_vars.contains(var);
-                    is_bound
-                } else {
-                    false
-                }
-            });
-
-            if connects_to_bound {
-                for term in &atom.terms {
-                    if let Term::Variable(var) = term {
-                        bound_vars.insert(var.clone());
-                    }
+                    bound_vars.insert(var.clone());
                 }
             }
         } else {
@@ -86,15 +111,12 @@ pub fn compute_bound_vars_at_position(
             });
 
             if connects_to_bound {
-                // For derived predicates with bf pattern:
-                // 1. First argument becomes bound (as before)
-                if let Some(Term::Variable(first_var)) = atom.terms.first() {
-                    bound_vars.insert(first_var.clone());
-                }
-                // 2. Second argument also becomes bound since we know its value
-                //    will be computed through the bf pattern
-                if let Some(Term::Variable(second_var)) = atom.terms.get(1) {
-                    bound_vars.insert(second_var.clone());
+                // After a derived predicate is evaluated, ALL its variables
+                // become bound (its output is fully materialized).
+                for term in &atom.terms {
+                    if let Term::Variable(var) = term {
+                        bound_vars.insert(var.clone());
+                    }
                 }
             }
         }
