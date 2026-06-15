@@ -1,0 +1,16 @@
+[workspace]
+
+[package]
+name = "pymycrodatalog"
+version = "0.1.0"
+edition = "2024"
+
+[lib]
+name = "pymycrodatalog"
+crate-type = ["cdylib"]
+
+[dependencies]
+pyo3 = { version = "0.28", features = ["extension-module"] }
+micro-datalog = { path = ".." }
+datalog-syntax = { path = "../datalog-syntax" }
+ascent = "*"

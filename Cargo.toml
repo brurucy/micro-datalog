@@ -1,4 +1,4 @@
-workspace = { members = ["common"] }
+workspace = { members = ["common"], exclude = ["pymycrodatalog"] }
 [package]
 name = "micro-datalog"
 version = "0.1.0"
@@ -39,9 +39,13 @@ name = "bottom-up_evaluation_with_magic_sets_tests"
 path = "test/query_program_bottom_up_tests.rs"
 
 [[test]]
-name = "top-down_evaluation_with_magic_sets_tests"
-path = "test/query_program_top_down_tests.rs"
+name = "sdt_evaluation_tests"
+path = "test/query_program_sdt_tests.rs"
 
 [[test]]
-name = "subsumptive_tabling_tests"
-path = "test/subsumptive_tabling_tests.rs"
+name = "engine_parity_tests"
+path = "test/engine_parity_tests.rs"
+
+[[test]]
+name = "all_backends_tests"
+path = "test/all_backends_tests.rs"

@@ -8,7 +8,7 @@ use super::index_storage::{EphemeralValue, IndexStorage};
 pub type FactStorage = IndexSet<Arc<AnonymousGroundAtom>, ahash::RandomState>;
 #[derive(Default, Clone)]
 pub struct RelationStorage {
-    pub(crate) inner: HashMap<String, FactStorage>,
+    pub inner: HashMap<String, FactStorage>,
 }
 
 impl RelationStorage {
@@ -179,6 +179,7 @@ impl RelationStorage {
             index_storage.borrow_all(&rel_name, new_diffs.into_iter());
         }
     }
+
 
     pub fn len(&self) -> usize {
         return self.inner.iter().map(|(_symbol, facts)| facts.len()).sum();

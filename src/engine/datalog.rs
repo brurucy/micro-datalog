@@ -1,36 +1,31 @@
-use std::collections::{HashMap, HashSet};
-use std::sync::Arc;
-
 use crate::engine::storage::RelationStorage;
-use crate::engine::subsumptive_table::SubsumptiveTable;
+use crate::evaluation::engine::{EvaluationEngine, SpjEngine, FreeJoinEngine};
 use crate::evaluation::query::pattern_match;
-use crate::evaluation::semi_naive::semi_naive_evaluation;
 use crate::helpers::helpers::split_program;
 use crate::program_transformations::dependency_graph::sort_program;
-use crate::program_transformations::magic_sets::{
-    apply_magic_transformation, create_magic_seed_fact,
-};
 use datalog_syntax::*;
 use indexmap::IndexSet;
 
 use super::magic_evaluator::MagicEvaluator;
-use super::subsumptive_evaluator::SubsumptiveEvaluator;
+use super::sdt_evaluator::SdtEvaluator;
 
-/// A Datalog runtime engine that supports incremental evaluation of rules using semi-naive strategy
-#[derive(Default)]
+/// A Datalog runtime engine that supports incremental evaluation of rules.
+/// The evaluation backend (SPJ or Free Join) is configurable.
 pub struct MicroRuntime {
     /// Storage for facts that have gone through all fixpoint iterations
-    /// These facts represent the current state of derived relations
-    pub(crate) processed: RelationStorage,
+    pub processed: RelationStorage,
 
     /// Storage for newly inserted facts that haven't been processed yet
-    pub(crate) unprocessed_insertions: RelationStorage,
+    pub unprocessed_insertions: RelationStorage,
 
     /// Contains rules that can be evaluated in a single pass without fixpoint iteration
     nonrecursive_program: Program,
 
     /// Contains rules that require fixpoint iteration for complete evaluation
     recursive_program: Program,
+
+    /// The evaluation engine to use for poll()
+    engine: Box<dyn EvaluationEngine>,
 }
 
 impl MicroRuntime {
@@ -78,7 +73,7 @@ impl MicroRuntime {
             );
         }
 
-        semi_naive_evaluation(
+        self.engine.evaluate(
             &mut self.processed,
             &self.nonrecursive_program,
             &self.recursive_program,
@@ -101,21 +96,39 @@ impl MicroRuntime {
                let result = evaluator.evaluate_query(query);
                Ok(result.into_iter())
             }
-            "Top-down" => {
-                let mut evaluator = SubsumptiveEvaluator::new(
+            "SDT" => {
+                let mut evaluator = SdtEvaluator::new(
                     self.processed.clone(),
                     self.unprocessed_insertions.clone(),
                     program,
                 );
 
-              let res = evaluator.evaluate_query(query);
-              Ok(res.into_iter())
+                let res = evaluator.evaluate_query(query);
+                Ok(res.into_iter())
             }
             _ => return Err("Did you invent a new evaluation strategy?".to_string()),
         }
     }
 
+    /// Create a new runtime with the Free Join engine (default).
     pub fn new(program: Program) -> Self {
+        Self::new_with_engine(program, Box::new(FreeJoinEngine))
+    }
+
+    /// Create a new runtime with the Free Join engine.
+    #[deprecated(note = "Use new() directly — Free Join is now the default")]
+    pub fn new_free_join(program: Program) -> Self {
+        Self::new(program)
+    }
+
+    /// Create a new runtime with the legacy SPJ engine.
+    #[deprecated(note = "SPJ is deprecated — use new() for Free Join")]
+    pub fn new_spj(program: Program) -> Self {
+        Self::new_with_engine(program, Box::new(SpjEngine))
+    }
+
+    /// Create a new runtime with a specific evaluation engine.
+    pub fn new_with_engine(program: Program, engine: Box<dyn EvaluationEngine>) -> Self {
         let mut processed: RelationStorage = Default::default();
         let mut unprocessed_insertions: RelationStorage = Default::default();
 
@@ -149,11 +162,16 @@ impl MicroRuntime {
             unprocessed_insertions,
             nonrecursive_program,
             recursive_program,
+            engine,
         }
     }
 
     pub fn safe(&self) -> bool {
         self.unprocessed_insertions.is_empty()
+    }
+
+    pub fn fact_count(&self) -> usize {
+        self.processed.len()
     }
 }
 

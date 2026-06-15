@@ -1,3 +1,20 @@
-target
-**/Cargo.lock
+# Rust
+target/
+
+# OS
 **/.DS_Store
+
+# Agent / editor tooling
+.claude/
+.serena/
+
+# Python (uv subproject)
+__pycache__/
+*.py[cod]
+.venv/
+.pytest_cache/
+.ruff_cache/
+.ipynb_checkpoints/
+
+# Local machine-specific symlinks
+pymycrodatalog/notebooks/lubm

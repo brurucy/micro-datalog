@@ -33,36 +33,15 @@ pub fn apply_magic_transformation(program: &Program, query: &Query) -> Program {
         for rule in get_rules_for_predicate(program, &adorned_pred.atom.symbol) {
             // Add any new adorned predicates to process
             for new_adorned in collect_new_adorned_predicates(program, rule, &adorned_pred) {
-                let has_bound_var = new_adorned
-                    .adornment
-                    .iter()
-                    .any(|a| matches!(a, Adornment::Bound));
-
-                if has_bound_var {
-                    to_process.push(new_adorned);
-                }
+                to_process.push(new_adorned);
             }
 
-            // Create and deduplicate magic rules
+            // Create and deduplicate magic rules (exact string dedup only —
+            // multiple rules with same head but different bodies are valid Datalog)
             let magic_rules = create_magic_rules(program, rule, &adorned_pred);
             for magic_rule in magic_rules {
                 let rule_str = format!("{:?}", magic_rule);
-
-                // First check if we've seen this exact rule before
                 if seen_rules.contains(&rule_str) {
-                    continue;
-                }
-
-                // Then check if we already have a rule with the same head
-                let has_rule_with_same_head =
-                    transformed_rules.iter().any(|existing_rule: &Rule| {
-                        // Two rules have the same head if they have the same predicate symbol
-                        // and the same terms in the head
-                        existing_rule.head.symbol == magic_rule.head.symbol
-                            && existing_rule.head.terms == magic_rule.head.terms
-                    });
-
-                if has_rule_with_same_head {
                     continue;
                 }
                 seen_rules.insert(rule_str);
@@ -113,41 +92,26 @@ pub fn create_magic_seed_fact(query: &Query) -> (String, AnonymousGroundAtom) {
 fn create_magic_rules(program: &Program, rule: &Rule, adorned_head: &AdornedAtom) -> Vec<Rule> {
     let mut magic_rules = Vec::new();
 
-    // Track all predicates seen so far that contribute to binding propagation
-    let mut binding_chain = vec![make_magic_predicate(adorned_head)];
+    // Use the current rule's head variable names (not the adorned atom's stored names).
+    let magic_pred = make_magic_predicate_for_rule(rule, adorned_head);
+    let mut binding_chain = if magic_pred.terms.is_empty() {
+        vec![]
+    } else {
+        vec![magic_pred]
+    };
 
-    // Track variables that can potentially propagate bindings
-    let mut bound_variables = get_bound_vars_from_adorned(adorned_head);
+    let mut bound_variables = get_bound_vars_for_rule(rule, &adorned_head.adornment);
 
     // First pass: Process each predicate in sequence, building up binding chains
     for (_pos, body_atom) in rule.body.iter().enumerate() {
         // If this is a base predicate that uses any bound variables,
         // add it to our binding chain because it contributes to binding propagation
         if !is_derived_predicate(program, &body_atom.symbol) {
-            let uses_bound_vars = body_atom.terms.iter().any(|term| {
+            // EDB atoms: all their variables become bound after processing
+            binding_chain.push(body_atom.clone());
+            for term in &body_atom.terms {
                 if let Term::Variable(var) = term {
-                    bound_variables.contains(var)
-                } else {
-                    false
-                }
-            });
-
-            if uses_bound_vars {
-                binding_chain.push(body_atom.clone());
-
-                // Add any new variables that become bound through this predicate
-                for term in &body_atom.terms {
-                    if let Term::Variable(var) = term {
-                        if bound_variables.contains(var) {
-                            // If this predicate uses a bound variable, all its variables
-                            // participate in the binding chain
-                            for other_term in &body_atom.terms {
-                                if let Term::Variable(other_var) = other_term {
-                                    bound_variables.insert(other_var.clone());
-                                }
-                            }
-                        }
-                    }
+                    bound_variables.insert(var.clone());
                 }
             }
             continue;
@@ -162,12 +126,11 @@ fn create_magic_rules(program: &Program, rule: &Rule, adorned_head: &AdornedAtom
         });
 
         if uses_bound_vars {
-            let magic_head = make_magic_predicate(
-                &(AdornedAtom {
-                    atom: body_atom.clone(),
-                    adornment: adorned_head.adornment.clone(),
-                }),
-            );
+            // Compute the correct adornment for this body atom based on
+            // which variables are bound at this point in the rule.
+            let body_adorned = AdornedAtom::from_atom_and_bound_vars(body_atom, &bound_variables);
+
+            let magic_head = make_magic_predicate(&body_adorned);
 
             if !binding_chain
                 .iter()
@@ -182,13 +145,7 @@ fn create_magic_rules(program: &Program, rule: &Rule, adorned_head: &AdornedAtom
             }
 
             // Add the adorned version of this predicate to the binding chain
-            binding_chain.push(modify_body_predicate(
-                body_atom,
-                &(AdornedAtom {
-                    atom: body_atom.clone(),
-                    adornment: adorned_head.adornment.clone(),
-                }),
-            ));
+            binding_chain.push(modify_body_predicate(body_atom, &body_adorned));
 
             // Update bound variables to include outputs from this predicate
             for term in &body_atom.terms {
@@ -207,7 +164,7 @@ pub fn collect_new_adorned_predicates(
     adorned_head: &AdornedAtom,
 ) -> Vec<AdornedAtom> {
     let mut new_adorned = Vec::new();
-    let mut current_bound_vars = get_bound_vars_from_adorned(adorned_head);
+    let mut current_bound_vars = get_bound_vars_for_rule(rule, &adorned_head.adornment);
 
     for (pos, body_atom) in rule.body.iter().enumerate() {
         if is_derived_predicate(program, &body_atom.symbol) {
@@ -239,22 +196,27 @@ pub fn modify_original_rule(program: &Program, rule: &Rule, adorned_head: &Adorn
         })
         .collect();
 
-    let magic_predicate = Atom {
-        symbol: make_magic_predicate_name(adorned_head),
-        terms: magic_terms.clone(),
-        sign: true,
-    };
-    new_body.push(magic_predicate);
+    // Only add magic predicate to body if it has bound terms.
+    // A 0-arity magic predicate (all-free query) is always satisfied
+    // and causes index-out-of-bounds in the SPJ compiler.
+    if !magic_terms.is_empty() {
+        let magic_predicate = Atom {
+            symbol: make_magic_predicate_name(adorned_head),
+            terms: magic_terms.clone(),
+            sign: true,
+        };
+        new_body.push(magic_predicate);
+    }
+
+    // Compute correct adornments for each IDB body atom, consistent
+    // with create_magic_rules and collect_new_adorned_predicates.
+    let body_adornments = collect_new_adorned_predicates(program, rule, adorned_head);
+    let mut adornment_iter = body_adornments.iter();
 
     for (_pos, body_atom) in rule.body.iter().enumerate() {
         if is_derived_predicate(program, &body_atom.symbol) {
-            // Use the same adornment pattern as the head for recursive predicates
-            let adornment = adorned_head.adornment.clone();
-            let adorned_body = AdornedAtom {
-                atom: body_atom.clone(),
-                adornment: adornment,
-            };
-            let modified_predicate = modify_body_predicate(body_atom, &adorned_body);
+            let adorned_body = adornment_iter.next().unwrap();
+            let modified_predicate = modify_body_predicate(body_atom, adorned_body);
             new_body.push(modified_predicate);
         } else {
             new_body.push(body_atom.clone());
@@ -288,3 +250,4 @@ pub fn make_magic_predicate(adorned_atom: &AdornedAtom) -> Atom {
         sign: true,
     }
 }
+

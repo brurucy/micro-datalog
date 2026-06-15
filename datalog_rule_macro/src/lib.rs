@@ -205,7 +205,8 @@ pub fn program(input: TokenStream) -> TokenStream {
                             }
                         })
                         .collect();
-                    quote! { Atom { terms: vec![#(#terms),*], symbol: stringify!(#name).to_string(), sign: true } }
+                    let sign = atom.sign;
+                    quote! { Atom { terms: vec![#(#terms),*], symbol: stringify!(#name).to_string(), sign: #sign } }
                 })
                 .collect();
 
@@ -327,7 +328,6 @@ pub fn stratified_program(input: TokenStream) -> TokenStream {
     let mut program_rules: Vec<_> = vec![];
 
     for rule in parsed_input.rules {
-        // let head_name = &rule.head.name;
         let head_terms: Vec<_> = rule
             .head
             .args
